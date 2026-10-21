@@ -155,7 +155,9 @@ function configurar() {
   }
   let hs = ss.getSheetByName(HISTORIAL);
   if (!hs) { hs = ss.insertSheet(HISTORIAL); hs.getRange(1, 1, 1, 9).setValues([['Fecha y hora','Perfil','Hoja','ID','Campaña','Campo','Antes','Después','ts']]); hs.setFrozenRows(1); }
-  [us, hs].forEach(sh => { if (sh.getProtections(SpreadsheetApp.ProtectionType.SHEET).length) return; const p = sh.protect().setDescription('Solo la dueña de la hoja'); p.removeEditors(p.getEditors()); if (p.canDomainEdit()) p.setDomainEdit(false); });
+  // Protege _Usuarios e _Historial: solo la dueña de la hoja y quien ejecuta pueden editarlas.
+  // Quien ejecuta se agrega primero como editor; si no, al quitar la edición por dominio se quitaría a sí mismo.
+  [us, hs].forEach(sh => { const p = sh.getProtections(SpreadsheetApp.ProtectionType.SHEET)[0] || sh.protect().setDescription('Solo la dueña de la hoja'); const yo = Session.getEffectiveUser(); p.addEditor(yo); const fijos = [ss.getOwner() ? ss.getOwner().getEmail() : '', yo.getEmail()]; p.removeEditors(p.getEditors().filter(e => fijos.indexOf(e.getEmail()) < 0)); if (p.canDomainEdit()) p.setDomainEdit(false); });
   const faltan = hojas().filter(n => !ss.getSheetByName(n));
   if (faltan.length) throw new Error('No encuentro estas pestañas: ' + faltan.join(', ') + '. Revisa la columna Hoja de _Usuarios.');
   hojas().forEach(n => leer(n)); secreto();
