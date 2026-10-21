@@ -56,9 +56,16 @@ function firmar(t) { return Utilities.base64EncodeWebSafe(Utilities.computeHmacS
 function llaveNueva() { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8); }
 function linkDe(llave) { return TABLERO_URL + '#k=' + llave; }
 function hojaUsuarios() { const sh = SpreadsheetApp.getActive().getSheetByName(USUARIOS); if (!sh) throw new Error('Falta la hoja _Usuarios. Ejecuta configurar().'); return sh; }
+/** Lee _Usuarios por el NOMBRE de cada columna (no por su posición), así no se rompe si alguien mueve columnas. */
 function usuarios() {
-  return hojaUsuarios().getDataRange().getValues().slice(1).map((r, i) => ({ fila: i + 2, perfil: String(r[0] || '').trim(), hoja: String(r[1] || '').trim(), rol: String(r[2] || 'advisor').trim().toLowerCase(), llave: String(r[3] || '').trim() })).filter(u => u.perfil);
+  const vals = hojaUsuarios().getDataRange().getValues(); const h = (vals[0] || []).map(x => String(x).trim().toLowerCase());
+  const c = n => h.indexOf(n.toLowerCase());
+  if (c('Perfil') < 0 || c('Llave') < 0) throw new Error('La pestaña _Usuarios está en el formato anterior. Ejecuta configurar() en Apps Script.');
+  const v = (r, n) => c(n) < 0 ? '' : String(r[c(n)] == null ? '' : r[c(n)]).trim();
+  return vals.slice(1).map((r, i) => ({ fila: i + 2, perfil: v(r, 'Perfil'), hoja: v(r, 'Hoja'), rol: (v(r, 'Rol') || 'advisor').toLowerCase(), llave: v(r, 'Llave') })).filter(u => u.perfil);
 }
+function colUsuarios(n) { const h = hojaUsuarios().getRange(1, 1, 1, hojaUsuarios().getLastColumn()).getValues()[0].map(x => String(x).trim().toLowerCase()); return h.indexOf(n.toLowerCase()) + 1; }
+function filaUsuario(o) { const sh = hojaUsuarios(); const h = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(x => String(x).trim()); return h.map(n => (n in o ? o[n] : '')); }
 /** Pestañas de advisors, en el orden de _Usuarios. */
 function hojas() { const out = []; usuarios().forEach(u => { if (u.rol === 'advisor' && u.hoja && out.indexOf(u.hoja) < 0) out.push(u.hoja); }); return out; }
 function sesion(u) {
@@ -104,13 +111,14 @@ function crearPerfil(u, p) {
     }
   }
   const llave = llaveNueva(), sh = hojaUsuarios();
-  sh.appendRow([nombre, hoja, rol, llave, linkDe(llave)]);
+  sh.appendRow(filaUsuario({ Perfil: nombre, Hoja: hoja, Rol: rol, Llave: llave, Link: linkDe(llave) }));
   return { perfil: { perfil: nombre, hoja: hoja, rol: rol, llave: llave } };
 }
 function nuevoLink(u, perfil) {
   soloAdmin(u);
   const x = usuarios().find(y => y.perfil === perfil); if (!x) throw new Error('No encuentro ese perfil.');
-  const llave = llaveNueva(); hojaUsuarios().getRange(x.fila, 4, 1, 2).setValues([[llave, linkDe(llave)]]);
+  const llave = llaveNueva(), sh = hojaUsuarios(); sh.getRange(x.fila, colUsuarios('Llave')).setValue(llave);
+  const cl = colUsuarios('Link'); if (cl) sh.getRange(x.fila, cl).setValue(linkDe(llave));
   return { perfil: { perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: llave } };
 }
 
@@ -202,6 +210,19 @@ function configurar() {
       .concat(ADVISORS_INICIALES.map(n => fila(n, n, 'advisor')))
       .concat([fila('Andrea', '', 'admin'), fila('Presentación', '', 'presentacion')]);
     us.getRange(1, 1, filas.length, COLS.length).setValues(filas); us.setFrozenRows(1); us.autoResizeColumns(1, 3);
+  } else {
+    // Migración: si _Usuarios viene del formato con PIN (Perfil, PIN, Hoja, Rol), se pasa a links
+    // personales conservando perfiles, pestañas y roles. El PIN se elimina.
+    const vals = us.getDataRange().getValues(); const h = vals[0].map(x => String(x).trim().toLowerCase());
+    if (h.indexOf('llave') < 0) {
+      const c = n => h.indexOf(n);
+      const filas = [COLS].concat(vals.slice(1).filter(r => String(r[c('perfil')] || '').trim()).map(r => {
+        const k = llaveNueva(); return [String(r[c('perfil')]).trim(), c('hoja') < 0 ? '' : String(r[c('hoja')] || '').trim(), c('rol') < 0 ? 'advisor' : (String(r[c('rol')] || '').trim().toLowerCase() || 'advisor'), k, linkDe(k)];
+      }));
+      us.clearContents(); us.getRange(1, 1, us.getMaxRows(), us.getMaxColumns()).setNumberFormat('General');
+      us.getRange(1, 1, filas.length, COLS.length).setValues(filas); us.setFrozenRows(1); us.autoResizeColumns(1, 3);
+      Logger.log('_Usuarios pasó del formato con PIN a links personales (' + (filas.length - 1) + ' perfiles).');
+    }
   }
   let hs = ss.getSheetByName(HISTORIAL);
   if (!hs) { hs = ss.insertSheet(HISTORIAL); hs.getRange(1, 1, 1, 9).setValues([['Fecha y hora','Perfil','Hoja','ID','Campaña','Campo','Antes','Después','ts']]); hs.setFrozenRows(1); }
