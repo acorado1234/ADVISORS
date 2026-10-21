@@ -235,3 +235,34 @@ function configurar() {
   const andrea = usuarios().find(x => x.rol === 'admin');
   Logger.log('Listo. Los links personales están en la pestaña _Usuarios.' + (andrea ? ' Link de ' + andrea.perfil + ': ' + linkDe(andrea.llave) : ''));
 }
+
+/* ---------- limpieza de pruebas: se ejecuta a mano desde el editor ----------
+ * Borra TODO lo que hicieron los perfiles cuyo nombre empieza con "Prueba":
+ *  - su fila en _Usuarios (su link deja de servir),
+ *  - su pestaña (solo si el nombre de la pestaña también empieza con "Prueba"),
+ *  - las campañas que ellos crearon, aunque las hayan pasado a otra advisor,
+ *  - sus movimientos en _Historial.
+ * No toca nada de Mafer, Adriana, Cintia ni de ningún otro perfil.
+ */
+function borrarPruebas() {
+  const ss = SpreadsheetApp.getActive(), es = n => /^prueba/i.test(String(n || '').trim());
+  const U = usuarios(), pruebas = U.filter(u => es(u.perfil));
+  const hs = ss.getSheetByName(HISTORIAL);
+  const H = hs && hs.getLastRow() > 1 ? hs.getRange(2, 1, hs.getLastRow() - 1, 9).getValues() : [];
+  const nombres = pruebas.map(u => u.perfil);
+  // Campañas creadas por un perfil de prueba (por su ID), estén donde estén ahora.
+  const ids = new Set(H.filter(r => es(r[1]) && r[5] === 'Nueva campaña').map(r => String(r[3])));
+  let campanas = 0;
+  hojas().filter(n => !es(n)).forEach(n => {
+    const sh = ss.getSheetByName(n); if (!sh) return; const h = encab(sh), c = h.indexOf(IDC), last = sh.getLastRow(); if (last < 2) return;
+    const v = sh.getRange(2, c + 1, last - 1, 1).getValues();
+    for (let i = v.length - 1; i >= 0; i--) if (ids.has(String(v[i][0]))) { sh.deleteRow(i + 2); campanas++; }
+  });
+  let movs = 0;
+  for (let i = H.length - 1; i >= 0; i--) if (es(H[i][1]) || ids.has(String(H[i][3]))) { hs.deleteRow(i + 2); movs++; }
+  let pestanas = 0;
+  pruebas.map(u => u.hoja).filter(n => n && es(n)).forEach(n => { const sh = ss.getSheetByName(n); if (sh) { ss.deleteSheet(sh); pestanas++; } });
+  const us = hojaUsuarios();
+  pruebas.map(u => u.fila).sort((a, b) => b - a).forEach(f => us.deleteRow(f));
+  Logger.log('Pruebas borradas. Perfiles: ' + (nombres.join(', ') || 'ninguno') + '. Pestañas: ' + pestanas + '. Campañas en otras pestañas: ' + campanas + '. Movimientos del historial: ' + movs + '.');
+}
