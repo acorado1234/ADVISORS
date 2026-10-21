@@ -34,6 +34,7 @@ function rutear(p) {
     case 'nuevoLink': return conLock(() => nuevoLink(u, p.objetivo));
     case 'datos': return datos(u);
     case 'histCampana': return { historial: histCampana(u, p.id) };
+    case 'presentacion': return guardarPresentacion(u, p.hoja, p.ids);
     case 'cambiar': return conLock(() => cambiar(u, p.id, p.campo, p.valor));
     case 'nota': return conLock(() => nota(u, p.id, p.texto));
     case 'agregar': return conLock(() => agregar(u, p.valores || {}));
@@ -191,11 +192,23 @@ function datos(u) {
   hojas().forEach(n => { const L = leer(n); cfg.hojas[n] = L.cfg; if (u.rol !== 'advisor' || n === u.hoja) campanas = campanas.concat(L.filas); });
   const mias = new Set(campanas.map(c => c.id));
   let hist = histTodo(); if (u.rol === 'advisor') hist = hist.filter(x => mias.has(x.id) || (x.perfil === u.perfil && x.campo === 'Traspaso'));
+  const pr = PropertiesService.getScriptProperties(); cfg.presentacion = {};
+  hojas().forEach(n => { if (u.rol !== 'advisor' || n === u.hoja) { try { cfg.presentacion[n] = JSON.parse(pr.getProperty('PRES_' + n) || '[]'); } catch (e) { cfg.presentacion[n] = []; } } });
   return { config: cfg, campanas, historial: hist.slice(-1500).reverse() };
 }
 function histCampana(u, id) {
   if (u.rol === 'advisor' && !leer(u.hoja).filas.some(f => f.id === String(id))) throw new Error('Esta campaña no es tuya.');
   return histTodo().filter(x => x.id === String(id)).reverse();
+}
+
+/* Presentación: cada advisor elige qué campañas mostrar; la lista se guarda para que Andrea la presente desde su compu. */
+function guardarPresentacion(u, hoja, ids) {
+  if (u.rol === 'presentacion') throw new Error('Este perfil solo puede ver.');
+  if (u.rol === 'advisor' && hoja !== u.hoja) throw new Error('Solo puedes armar tu propia presentación.');
+  if (hojas().indexOf(hoja) < 0) throw new Error('No encuentro esa advisor.');
+  const L = (Array.isArray(ids) ? ids : []).map(String).filter(x => /^[\w-]{3,40}$/.test(x)).slice(0, 300);
+  PropertiesService.getScriptProperties().setProperty('PRES_' + hoja, JSON.stringify(L));
+  return { ids: L };
 }
 
 /* ---------- escritura ---------- */

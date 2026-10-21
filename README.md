@@ -97,6 +97,10 @@ Cada advisor arma su pestaña a su manera. El tablero las traduce a **un mismo m
 
 Cada campaña tiene una bitácora: cada nota se suma arriba con fecha, hora y quién la escribió, sin borrar las anteriores. Se guarda en la columna `Notas` de la hoja, una nota por línea con el formato `[20/10/2026 14:30, Mafer] texto`, así se sigue leyendo bien desde el Excel. Las notas que ya existían quedan como "Antes del tablero". En la lista se ve la última nota y hace cuánto se escribió (en dorado después de 3 días, en rojo después de 7).
 
+## Presentar
+
+Al pulsar **Presentar** primero se eligen las campañas: vienen marcadas las que se movieron en los últimos 7 días y las que se eligieron la vez anterior, y se puede agregar o quitar cualquiera. La selección se guarda en el servidor, así la advisor la arma en su compu y Andrea la presenta desde la suya. Al final sale un resumen con las demás campañas activas.
+
 ## Probar sin tocar datos reales
 
 Crea perfiles cuyo nombre empiece con `Prueba` desde **Equipo** y úsalos. Al terminar, en Apps Script ejecuta `borrarPruebas`: elimina esos perfiles, sus pestañas, las campañas que crearon (aunque las hayan pasado a otra advisor) y sus movimientos del historial.

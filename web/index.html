@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="config.js"></script>
-<link rel="stylesheet" href="estilo.css?v=6">
+<link rel="stylesheet" href="estilo.css?v=7">
 </head>
 <body>
 <div id="app"></div>
@@ -179,16 +179,43 @@ function hoyHTML(H){const L=paraHoy(H);if(!L.length)return'';const hoy=L.filter(
   const grupo=(tit,G,cl)=>G.length?`<div class="hoy-g ${cl}"><h2>${tit} <span>${G.length}</span></h2><div class="hoy-l">${G.slice(0,8).map(it).join('')}</div>${G.length>8?`<p class="nota">Y ${G.length-8} más.</p>`:''}</div>`:'';
   return `<section class="hoy">${grupo('Para hoy',hoy,'')}${grupo('Próximos 3 días',pronto,'pronto')}</section>`}
 /* ---------- presentación de cada advisor ---------- */
-function presentar(hoja){const H=S.datos.hojas[hoja];if(!H)return;const lim=Date.now()-7*864e5;const ids=new Set(H.filas.map(r=>r._id));const ult={};
-  (S.datos.historial||[]).forEach(h=>{const t=h.ts||Date.parse(h.fecha);if(t>=lim&&ids.has(h.id)&&!(ult[h.id]>t))ult[h.id]=t});
-  const mov=Object.keys(ult).sort((a,b)=>ult[b]-ult[a]).map(id=>H.filas.find(r=>r._id===id)).filter(r=>r&&!INACTIVOS.includes(r.Status));
-  const resto=H.filas.filter(r=>!INACTIVOS.includes(r.Status)&&!ult[r._id]);
+/** Campañas con algún movimiento en los últimos 7 días: { id: fecha del último movimiento } */
+function movidas(H){const lim=Date.now()-7*864e5;const ids=new Set(H.filas.map(r=>r._id));const ult={};(S.datos.historial||[]).forEach(h=>{const t=h.ts||Date.parse(h.fecha);if(t>=lim&&ids.has(h.id)&&!(ult[h.id]>t))ult[h.id]=t});return ult}
+function ordenEtapa(H){const E=etapasDe(H),P={C:3,B:2,A:1,N:0};return(a,b)=>((E.indexOf(a.Status)+1||99)-(E.indexOf(b.Status)+1||99))||(P[letra(b.Puntaje)]-P[letra(a.Puntaje)])||String(a.Marca||'').localeCompare(String(b.Marca||''))}
+/** Antes de presentar: elegir qué campañas mostrar. Vienen marcadas las movidas esta semana y las elegidas la vez pasada. */
+function elegir(hoja){const H=S.datos.hojas[hoja];if(!H)return;const ult=movidas(H);const E=etapasDe(H);
+  const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status)).sort(ordenEtapa(H));
+  const guard=new Set(((CFG&&CFG.presentacion)||{})[hoja]||[]);const sel=new Set(act.filter(r=>guard.has(r._id)||ult[r._id]).map(r=>r._id));
+  const puede=S.sesion.rol!=='presentacion';
+  const grupos=E.concat(['']).map(s=>[s,act.filter(r=>s?r.Status===s:!E.includes(r.Status))]).filter(g=>g[1].length);
+  const ov=document.createElement('div');ov.className='pov';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');ov.setAttribute('aria-label','Elegir campañas para presentar');document.body.appendChild(ov);S.abierta=ov;
+  const tec=e=>{if(e.key==='Escape')cerrar()};document.addEventListener('keydown',tec);
+  const cerrar=()=>{document.removeEventListener('keydown',tec);ov.remove();S.abierta=null;render()};
+  const draw=()=>{const b=ov.querySelector('.pov-b'),y=b?b.scrollTop:0;
+    ov.innerHTML=`<header class="pov-h">${LOGO}<b>Presentación de ${esc(hoja)}</b><span>${sel.size} de ${act.length} elegidas</span><button class="x" data-px aria-label="Cerrar">${ic('cerrar')}</button></header>
+    <main class="pov-b"><div class="pick"><h1>¿Qué campañas vas a presentar?</h1><p class="sub">Vienen marcadas las que se movieron esta semana${guard.size?' y las que elegiste la vez pasada':''}. Toca una campaña para agregarla o quitarla.</p>
+    <div class="chips pick-a"><button class="chip" data-sel="sem">Solo las movidas esta semana</button><button class="chip" data-sel="todas">Todas las activas</button><button class="chip" data-sel="ninguna">Ninguna</button></div>
+    ${grupos.map(([s,rs])=>`<h4>${ic(IC_ETAPA[s]||'alerta')}${esc(s||'Sin status')}<span>${rs.length}</span></h4><div class="pick-g">${rs.map(r=>`<button type="button" class="pk ${sel.has(r._id)?'on':''}" data-pk="${esc(r._id)}" aria-pressed="${sel.has(r._id)}"><span class="caja">${ic('check')}</span>${ptHTML(r.Puntaje)}<span class="pk-t"><b>${esc(r.Marca||'Sin marca')}</b><small>${esc(r['Campaña']||'Sin nombre')}</small>${ult[r._id]?'<em>Movida esta semana</em>':''}</span></button>`).join('')}</div>`).join('')||'<div class="vacio">No hay campañas activas para presentar.</div>'}
+    </div></main>
+    <footer class="pov-f"><button class="btn ghost" data-px>Cancelar</button><span class="nota" style="margin:0">${puede?'Esta selección se guarda para la próxima vez.':''}</span><button class="btn" data-go ${sel.size?'':'disabled'}>${ic('presentar')}Presentar ${sel.size} ${sel.size===1?'campaña':'campañas'}</button></footer>`;
+    ov.querySelector('.pov-b').scrollTop=y;
+    ov.querySelectorAll('[data-px]').forEach(x=>x.onclick=cerrar);
+    ov.querySelectorAll('[data-pk]').forEach(x=>x.onclick=()=>{const id=x.dataset.pk;sel.has(id)?sel.delete(id):sel.add(id);draw()});
+    ov.querySelectorAll('[data-sel]').forEach(x=>x.onclick=()=>{sel.clear();if(x.dataset.sel==='todas')act.forEach(r=>sel.add(r._id));if(x.dataset.sel==='sem')act.filter(r=>ult[r._id]).forEach(r=>sel.add(r._id));draw()});
+    ov.querySelector('[data-go]').onclick=()=>{const ids=act.filter(r=>sel.has(r._id)).map(r=>r._id);
+      if(puede)llamar('presentacion',{hoja,ids}).then(r=>{CFG.presentacion=CFG.presentacion||{};CFG.presentacion[hoja]=r.ids}).catch(e=>toast('No pude guardar la selección: '+e.message,true));
+      document.removeEventListener('keydown',tec);ov.remove();S.abierta=null;presentar(hoja,ids)}};
+  draw()}
+function presentar(hoja,elegidas){const H=S.datos.hojas[hoja];if(!H)return;const ult=movidas(H);
+  const lista=elegidas||Object.keys(ult);const set=new Set(lista);
+  const mov=lista.map(id=>H.filas.find(r=>r._id===id)).filter(r=>r&&!INACTIVOS.includes(r.Status));
+  const resto=H.filas.filter(r=>!INACTIVOS.includes(r.Status)&&!set.has(r._id));
   let slides=mov.map(r=>({k:'c',r})).concat(resto.length?[{k:'res'}]:[]);if(!slides.length)slides=[{k:'vacio'}];let i=0;
   const ov=document.createElement('div');ov.className='pov';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');ov.setAttribute('aria-label','Presentación de '+hoja);document.body.appendChild(ov);S.abierta=ov;
   const cerrar=()=>{document.removeEventListener('keydown',tec);ov.remove();S.abierta=null;render()};
   const ir=d=>{const n=i+d;if(n<0)return;if(n>=slides.length)return cerrar();i=n;draw()};
   const tec=e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();ir(1)}else if(e.key==='ArrowLeft'){e.preventDefault();ir(-1)}else if(e.key==='Escape')cerrar()};document.addEventListener('keydown',tec);
-  const draw=()=>{const sl=slides[i];ov.innerHTML=`<header class="pov-h">${LOGO}<b>${esc(hoja)}</b><span>${sl.k==='c'?`${i+1} de ${mov.length}, movidas esta semana`:sl.k==='res'?'Resumen':''}</span><button class="x" data-px aria-label="Cerrar presentación">${ic('cerrar')}</button></header>
+  const draw=()=>{const sl=slides[i];ov.innerHTML=`<header class="pov-h">${LOGO}<b>${esc(hoja)}</b><span>${sl.k==='c'?`${i+1} de ${mov.length}${ult[sl.r._id]?', movida esta semana':''}`:sl.k==='res'?'Resumen':''}</span><button class="x" data-px aria-label="Cerrar presentación">${ic('cerrar')}</button></header>
     <main class="pov-b">${sl.k==='c'?slideC(sl.r,H):sl.k==='res'?slideRes(resto,mov.length):`<div class="pr"><h1>${esc(hoja)} no tiene campañas activas</h1><p class="sub">Cuando agregue o mueva campañas, aparecerán aquí.</p></div>`}</main>
     <footer class="pov-f"><button class="btn ghost" data-pp ${i?'':'disabled'}>Anterior</button><span class="nota" style="margin:0">Usa las flechas del teclado</span><button class="btn" data-pn>${i<slides.length-1?'Siguiente':'Terminar'}</button></footer>`;
     ov.querySelector('[data-px]').onclick=cerrar;ov.querySelector('[data-pp]').onclick=()=>ir(-1);ov.querySelector('[data-pn]').onclick=()=>ir(1)};
@@ -201,7 +228,7 @@ function slideC(r,H){const A=avance(r,H);const hs=(S.datos.historial||[]).filter
     ${fechas?`<div class="ps-f">${fechas}</div>`:''}</div>
     <aside class="ps-h">${(()=>{const N=notasDe(r,H).slice(0,3);return N.length?`<h3>Bitácora</h3><ol class="tl">${tlHTML(N)}</ol>`:''})()}<h3>Últimos movimientos</h3>${hs.length?hs.map(histHTML).join(''):'<p class="nota">Sin movimientos registrados.</p>'}</aside></div>`}
 function slideRes(resto,n){const L=(LIST.Status).filter(s=>!INACTIVOS.includes(s));const g=L.map(s=>[s,resto.filter(r=>r.Status===s)]).filter(x=>x[1].length);const sin=resto.filter(r=>!r.Status);if(sin.length)g.push(['Sin status',sin]);
-  return `<div class="pr"><h1>${n?'Además, sin movimiento esta semana':'Sin movimientos esta semana'}</h1><p class="sub">${resto.length} ${resto.length===1?'campaña activa':'campañas activas'} más.</p><div class="pr-g">${g.map(([s,rs])=>`<section><h3>${esc(s)} <span>${rs.length}</span></h3>${rs.map(r=>`<div class="pr-i">${ptHTML(r.Puntaje)}<span>${esc([r.Marca,r['Campaña']].filter(Boolean).join(', '))}</span></div>`).join('')}</section>`).join('')||'<p class="nota">No hay más campañas activas.</p>'}</div></div>`}
+  return `<div class="pr"><h1>${n?'Las demás campañas activas':'Campañas activas'}</h1><p class="sub">${resto.length} ${resto.length===1?'campaña activa':'campañas activas'} más.</p><div class="pr-g">${g.map(([s,rs])=>`<section><h3>${esc(s)} <span>${rs.length}</span></h3>${rs.map(r=>`<div class="pr-i">${ptHTML(r.Puntaje)}<span>${esc([r.Marca,r['Campaña']].filter(Boolean).join(', '))}</span></div>`).join('')}</section>`).join('')||'<p class="nota">No hay más campañas activas.</p>'}</div></div>`}
 
 /* ---------- vistas ---------- */
 function topHTML(){const pres=S.sesion.rol!=='advisor';const t=(n,txt)=>`${ic(n)}<span class="tx">${esc(txt)}</span>`;
@@ -320,7 +347,7 @@ async function toggleCheck(id,c,w){const H=hojaMia();const r=H.filas.find(x=>x._
   finally{delete ckPend[k]}}
 function abrirBind(id,w,H){const r=H.filas.find(x=>x._id===id);w.querySelectorAll('[data-ck]').forEach(b=>b.onclick=async()=>{if(b.disabled)return;b.disabled=true;const c=b.dataset.ck;await cambiar(id,c,!(r[c]===true));const box=b.closest('.grupo');const tmp=document.createElement('div');tmp.innerHTML=checklistHTML(H.filas.find(x=>x._id===id),H);box.replaceWith(tmp.firstElementChild);abrirBind(id,w,H)})}
 async function recargarHist(){S.datos=construir()}
-function enlazar(){const s=$('#salir');if(s)s.onclick=()=>salir();document.querySelectorAll('[data-presentar]').forEach(b=>b.onclick=()=>presentar(b.dataset.presentar));const xb=$('#xls');if(xb)xb.onclick=()=>descargarExcel(xb);
+function enlazar(){const s=$('#salir');if(s)s.onclick=()=>salir();document.querySelectorAll('[data-presentar]').forEach(b=>b.onclick=()=>elegir(b.dataset.presentar));const xb=$('#xls');if(xb)xb.onclick=()=>descargarExcel(xb);
   document.querySelectorAll('[data-vista]').forEach(b=>b.onclick=()=>{S.vista=b.dataset.vista;render()});
   document.querySelectorAll('[data-adv]').forEach(b=>b.onclick=()=>{S.advisor=b.dataset.adv;render()});
   document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{const f=b.dataset.f;S.filtro=(S.filtro===f&&f!=='Activas')?'Activas':f;S.lim=150;render()});
