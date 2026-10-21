@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="config.js"></script>
-<link rel="stylesheet" href="estilo.css?v=5">
+<link rel="stylesheet" href="estilo.css?v=6">
 </head>
 <body>
 <div id="app"></div>
@@ -153,11 +153,12 @@ function salir(msg){S.sesion=null;S.datos=null;try{localStorage.removeItem('sesi
 
 /* ---------- datos ---------- */
 async function cargar(){try{await initDB()}catch(e){$('#app').innerHTML=`<div class="carga">${esc(e.message)}</div>`;return}
-  const k=llaveDe(location.hash);if(k){history.replaceState(null,'',location.pathname+location.search);$('#app').innerHTML='<div class="carga">Entrando…</div>';try{await entrarCon(k)}catch(e){return salir(e.message)}}
+  const k=llaveDe(location.hash);if(k){history.replaceState(null,'',location.pathname+location.search);cargando('Entrando…');try{await entrarCon(k)}catch(e){return salir(e.message)}}
   if(!S.sesion)return vistaLogin();
-  if(!S.datos)$('#app').innerHTML='<div class="carga">Cargando…</div>';
+  if(!S.datos)cargando('Cargando tus campañas…');
   try{S.datos=await api('datos');if(S.datos.rol!=='advisor'&&!S.advisor)S.advisor=Object.keys(S.datos.hojas)[0];render()}
   catch(e){if(/sesión|link/.test(e.message)){salir(e.message)}else $('#app').innerHTML=`<div class="carga">${esc(e.message)} <button class="btn ghost" onclick="location.reload()">Volver a intentar</button></div>`}}
+function cargando(t){$('#app').innerHTML=`<div class="carga" id="carga"><p>${esc(t)}</p></div>`;setTimeout(()=>{const c=$('#carga');if(c&&!c.querySelector('small'))c.insertAdjacentHTML('beforeend','<small>Google tarda unos segundos en responder, sobre todo la primera vez del día.</small>')},4000)}
 function hojaMia(){return S.datos.hojas[S.sesion.hoja]||{encabezados:[],listas:{},filas:[]}}
 
 
@@ -167,26 +168,28 @@ function fmtD(iso){const d=new Date(iso+'T12:00:00');return d.toLocaleDateString
 function paraHoy(H){const hoy=new Date(),d0=isoD(hoy),d3=isoD(new Date(hoy.getTime()+3*864e5)),d7=isoD(new Date(hoy.getTime()-7*864e5)),d30=isoD(new Date(hoy.getTime()-30*864e5));const out=[];
   H.filas.filter(r=>!INACTIVOS.includes(r.Status)).forEach(r=>{const n=[r.Marca,r['Campaña']].filter(Boolean).join(', ')||'Campaña';const f=k=>/^\d{4}-\d{2}-\d{2}$/.test(r[k]||'')?r[k]:null;
     const a=f('Fecha de activación'),t=f('Fecha de finalización'),rp=f('Fecha envio reporte');
-    if(a&&a>=d0&&a<=d3)out.push({id:r._id,n,t:a===d0?'Activa hoy':'Activa el '+fmtD(a),k:1});
-    if(t&&t>=d0&&t<=d3)out.push({id:r._id,n,t:t===d0?'Termina hoy':'Termina el '+fmtD(t),k:1});
-    if(rp&&rp>=d7&&rp<=d3)out.push({id:r._id,n,t:'Reporte para el '+fmtD(rp),k:2});
-    if(t&&t<d0&&t>=d30&&r['Pago recibido']!==true)out.push({id:r._id,n,t:'Terminó el '+fmtD(t)+' y el pago no está marcado',k:3});
-    if(r.Status==='Reporte'&&r['Solicitud de reporte']!==true)out.push({id:r._id,n,t:'En Reporte sin la solicitud de reporte',k:3})});
+    if(a&&a>=d0&&a<=d3)out.push({id:r._id,n,t:a===d0?'Activa hoy':'Activa el '+fmtD(a),k:1,hoy:a===d0});
+    if(t&&t>=d0&&t<=d3)out.push({id:r._id,n,t:t===d0?'Termina hoy':'Termina el '+fmtD(t),k:1,hoy:t===d0});
+    if(rp&&rp>=d7&&rp<=d3)out.push({id:r._id,n,t:(rp<d0?'Reporte atrasado, era para el ':rp===d0?'Reporte para hoy, ':'Reporte para el ')+fmtD(rp),k:rp<d0?3:2,hoy:rp<=d0});
+    if(t&&t<d0&&t>=d30&&r['Pago recibido']!==true)out.push({id:r._id,n,t:'Terminó el '+fmtD(t)+' y el pago no está marcado',k:3,hoy:true});
+    if(r.Status==='Reporte'&&r['Solicitud de reporte']!==true)out.push({id:r._id,n,t:'En Reporte sin la solicitud de reporte',k:3,hoy:true})});
   return out.sort((x,y)=>x.k-y.k)}
-function hoyHTML(H){const L=paraHoy(H);if(!L.length)return'';
-  return `<section class="hoy"><h2>Para hoy <span>${L.length}</span></h2><div class="hoy-l">${L.slice(0,8).map(x=>`<button class="hoy-i k${x.k}" data-abrir="${esc(x.id)}"><span class="bolita">${ic(x.k===3?'alerta':x.k===2?'reporte':'reloj')}</span><b>${esc(x.n)}</b><span>${esc(x.t)}</span></button>`).join('')}</div>${L.length>8?`<p class="nota">Y ${L.length-8} más.</p>`:''}</section>`}
+function hoyHTML(H){const L=paraHoy(H);if(!L.length)return'';const hoy=L.filter(x=>x.hoy),pronto=L.filter(x=>!x.hoy);
+  const it=x=>`<button class="hoy-i k${x.k}" data-abrir="${esc(x.id)}"><span class="bolita">${ic(x.k===3?'alerta':x.k===2?'reporte':'reloj')}</span><b>${esc(x.n)}</b><span>${esc(x.t)}</span></button>`;
+  const grupo=(tit,G,cl)=>G.length?`<div class="hoy-g ${cl}"><h2>${tit} <span>${G.length}</span></h2><div class="hoy-l">${G.slice(0,8).map(it).join('')}</div>${G.length>8?`<p class="nota">Y ${G.length-8} más.</p>`:''}</div>`:'';
+  return `<section class="hoy">${grupo('Para hoy',hoy,'')}${grupo('Próximos 3 días',pronto,'pronto')}</section>`}
 /* ---------- presentación de cada advisor ---------- */
 function presentar(hoja){const H=S.datos.hojas[hoja];if(!H)return;const lim=Date.now()-7*864e5;const ids=new Set(H.filas.map(r=>r._id));const ult={};
   (S.datos.historial||[]).forEach(h=>{const t=h.ts||Date.parse(h.fecha);if(t>=lim&&ids.has(h.id)&&!(ult[h.id]>t))ult[h.id]=t});
   const mov=Object.keys(ult).sort((a,b)=>ult[b]-ult[a]).map(id=>H.filas.find(r=>r._id===id)).filter(r=>r&&!INACTIVOS.includes(r.Status));
   const resto=H.filas.filter(r=>!INACTIVOS.includes(r.Status)&&!ult[r._id]);
-  const slides=mov.map(r=>({k:'c',r})).concat([{k:'res'}]);let i=0;
+  let slides=mov.map(r=>({k:'c',r})).concat(resto.length?[{k:'res'}]:[]);if(!slides.length)slides=[{k:'vacio'}];let i=0;
   const ov=document.createElement('div');ov.className='pov';ov.setAttribute('role','dialog');ov.setAttribute('aria-modal','true');ov.setAttribute('aria-label','Presentación de '+hoja);document.body.appendChild(ov);S.abierta=ov;
   const cerrar=()=>{document.removeEventListener('keydown',tec);ov.remove();S.abierta=null;render()};
   const ir=d=>{const n=i+d;if(n<0)return;if(n>=slides.length)return cerrar();i=n;draw()};
   const tec=e=>{if(e.key==='ArrowRight'||e.key===' '){e.preventDefault();ir(1)}else if(e.key==='ArrowLeft'){e.preventDefault();ir(-1)}else if(e.key==='Escape')cerrar()};document.addEventListener('keydown',tec);
-  const draw=()=>{const sl=slides[i];ov.innerHTML=`<header class="pov-h">${LOGO}<b>${esc(hoja)}</b><span>${sl.k==='c'?`${i+1} de ${mov.length}, movidas esta semana`:'Resumen'}</span><button class="x" data-px aria-label="Cerrar presentación">${ic('cerrar')}</button></header>
-    <main class="pov-b">${sl.k==='c'?slideC(sl.r,H):slideRes(resto,mov.length)}</main>
+  const draw=()=>{const sl=slides[i];ov.innerHTML=`<header class="pov-h">${LOGO}<b>${esc(hoja)}</b><span>${sl.k==='c'?`${i+1} de ${mov.length}, movidas esta semana`:sl.k==='res'?'Resumen':''}</span><button class="x" data-px aria-label="Cerrar presentación">${ic('cerrar')}</button></header>
+    <main class="pov-b">${sl.k==='c'?slideC(sl.r,H):sl.k==='res'?slideRes(resto,mov.length):`<div class="pr"><h1>${esc(hoja)} no tiene campañas activas</h1><p class="sub">Cuando agregue o mueva campañas, aparecerán aquí.</p></div>`}</main>
     <footer class="pov-f"><button class="btn ghost" data-pp ${i?'':'disabled'}>Anterior</button><span class="nota" style="margin:0">Usa las flechas del teclado</span><button class="btn" data-pn>${i<slides.length-1?'Siguiente':'Terminar'}</button></footer>`;
     ov.querySelector('[data-px]').onclick=cerrar;ov.querySelector('[data-pp]').onclick=()=>ir(-1);ov.querySelector('[data-pn]').onclick=()=>ir(1)};
   draw()}
@@ -202,9 +205,9 @@ function slideRes(resto,n){const L=(LIST.Status).filter(s=>!INACTIVOS.includes(s
 
 /* ---------- vistas ---------- */
 function topHTML(){const pres=S.sesion.rol!=='advisor';const t=(n,txt)=>`${ic(n)}<span class="tx">${esc(txt)}</span>`;
-  const tabs=pres?Object.keys(S.datos.hojas).map(n=>`<button data-adv="${esc(n)}" ${S.advisor===n?'aria-current="page"':''}>${esc(n)}</button>`).join('')+(S.sesion.rol==='admin'?`<button data-adv="${EQUIPO}" ${S.advisor===EQUIPO?'aria-current="page"':''}>${t('comunidad','Equipo')}</button>`:''):
+  const tabs=pres?(S.sesion.rol==='admin'?`<button data-adv="${EQUIPO}" ${S.advisor===EQUIPO?'aria-current="page"':''}>${t('comunidad','Equipo')}</button>`:''):
   `<button data-vista="campanas" ${S.vista==='campanas'?'aria-current="page"':''}>${t('lista','Mis campañas')}</button><button data-vista="historial" ${S.vista==='historial'?'aria-current="page"':''}>${t('historial','Historial')}</button><button data-presentar="${esc(S.sesion.hoja)}">${t('presentar','Presentar')}</button>`;
-  return `<header class="top"><div class="wrap"><div class="marca">${LOGO}<i></i><h1><span class="tt">${esc(C.TITULO||'Status de campañas')}</span><span class="who">${S.sesion.rol==='presentacion'?'Presentación':esc(S.sesion.perfil)}</span></h1></div><nav aria-label="Secciones">${tabs}${S.sesion.rol==='admin'?`<button id="xls" title="Descargar la hoja como Excel">${t('descargar','Excel')}</button>`:''}<button id="salir" title="Salir">${t('salir','Salir')}</button></nav></div></header>`}
+  return `<header class="top"><div class="wrap"><div class="marca">${LOGO}<i></i><h1><span class="tt">${esc(C.TITULO||'Status de campañas')}</span><span class="who">${S.sesion.rol==='presentacion'?'Presentación':esc(S.sesion.perfil)}</span></h1></div><nav aria-label="Secciones">${tabs}${S.sesion.rol==='admin'?`<button id="xls" title="Descargar la hoja como Excel">${t('descargar','Excel')}</button>`:''}<button id="salir" title="Salir">${t('salir','Salir')}</button></nav></div>${pres?`<div class="subnav"><div class="wrap"><span>Advisors</span><div class="sub-t" role="group" aria-label="Elegir advisor">${Object.keys(S.datos.hojas).map(n=>`<button data-adv="${esc(n)}" ${S.advisor===n?'aria-current="page"':''}><span class="mini">${esc(n.slice(0,1).toUpperCase())}</span>${esc(n)}</button>`).join('')}</div></div></div>`:''}</header>`}
 function leyendaHTML(){return `<div class="leyenda"><span>Puntaje</span><span class="pt A">A1</span>sencilla<span class="pt B">B2</span>media<span class="pt C">C3</span>compleja</div>`}
 function conteos(H){const L=(H.listas.Status||LIST.Status);const c={};L.forEach(s=>c[s]=0);H.filas.forEach(r=>{const s=r.Status||'Sin status';c[s]=(c[s]||0)+1});return c}
 /** La órbita: cada etapa del pipeline con cuántas campañas hay ahí. Tocar una etapa filtra la lista. */
@@ -223,13 +226,14 @@ function render(){if(S.sesion.rol!=='advisor')return renderPres();
   else{const F=filtradas(H);const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status)).length;const hoy=new Date().toLocaleDateString('es-GT',{weekday:'long',day:'numeric',month:'long'});
   main=`<div class="saludo"><div><h2>Hola, ${esc(S.sesion.perfil)}</h2><p>${act} ${act===1?'campaña activa':'campañas activas'}, ${esc(hoy)}</p></div>${chipsHTML(H)}</div>${orbitaHTML(H)}${hoyHTML(H)}
   <div class="tools"><label class="buscar-w">${ic('buscar')}<input class="buscar" id="q" placeholder="Buscar marca, campaña o agencia" value="${esc(S.q)}" aria-label="Buscar"></label>${leyendaHTML()}<button class="btn violet" id="nueva">${ic('mas')}Nueva campaña</button></div>
-  <div class="lista">${F.length?F.slice(0,S.lim).map(r=>filaHTML(r)).join('')+(F.length>S.lim?`<button class="btn ghost mas" data-mas>Mostrar ${Math.min(150,F.length-S.lim)} más de ${F.length-S.lim}</button>`:''):'<div class="vacio">No hay campañas en este filtro. Usa "Nueva campaña" para agregar una.</div>'}</div>`}
+  <div class="lista">${F.length?F.slice(0,S.lim).map(r=>filaHTML(r)).join('')+(F.length>S.lim?`<button class="btn ghost mas" data-mas>Mostrar ${Math.min(150,F.length-S.lim)} más de ${F.length-S.lim}</button>`:''):vacioHTML()}</div>`}
   $('#app').innerHTML=topHTML()+`<main class="wrap">${main}</main>`;enlazar()}
+function vacioHTML(){return S.filtro==='Activas'&&!S.q.trim()?'<div class="vacio">Todavía no tienes campañas activas. Usa "Nueva campaña" para agregar la primera.</div>':`<div class="vacio">No hay campañas ${S.q.trim()?(S.filtro==='Activas'?'activas que coincidan con tu búsqueda':'con este filtro y esta búsqueda'):'con este filtro'}.<br><button class="btn ghost" data-quitar style="margin-top:12px">${ic('cerrar')}${S.q.trim()?'Quitar búsqueda y filtro':'Quitar filtro'}</button></div>`}
 function histHTML(h){return `<div class="h"><time>${fmtF(h.fecha)}</time><div><b>${esc(h.cuenta||'Campaña')}</b><small>${h.campo==='Nueva campaña'?'Nueva campaña':`${esc(h.campo)}: ${h.antes!==''&&h.antes!=null?`<span class="de">${esc(vis(h.antes))}</span> a `:''}${esc(vis(h.despues))}`}${S.sesion.rol!=='advisor'?`, por ${esc(h.perfil)}`:''}</small></div></div>`}
-function vis(v){return v===true?'Sí':v===false?'No':v}
+function vis(v){return v===true?'Sí':v===false?'No':(v===''||v==null)?'vacío':/^\d{4}-\d{2}-\d{2}$/.test(String(v))?fmtD(v):v}
 function renderPres(){if(S.advisor===EQUIPO)return renderEquipo();const n=S.advisor;const H=S.datos.hojas[n]||{filas:[],listas:{}};const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status));
   const L=(H.listas.Status||LIST.Status).filter(s=>!INACTIVOS.includes(s));const semana=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
-  const hs=(S.datos.historial||[]).filter(h=>h.perfil===n&&h.fecha.slice(0,10)>=semana);
+  const ids=new Set(H.filas.map(r=>r._id));const hs=(S.datos.historial||[]).filter(h=>(ids.has(h.id)||h.perfil===n)&&h.fecha.slice(0,10)>=semana);
   $('#app').innerHTML=topHTML()+`<main class="wrap pres"><div class="saludo pres-h"><div><h2>${esc(n)}</h2><p>${act.length} ${act.length===1?'campaña activa':'campañas activas'}. Solo lectura.</p></div><button class="btn violet" data-presentar="${esc(n)}">${ic('presentar')}Presentar</button></div>${orbitaHTML(H,true)}
   <div class="col"><section class="estado">${L.concat(act.some(r=>!r.Status)?['']:[]).filter(s=>act.some(r=>(r.Status||'')===s)).map(s=>{const rs=act.filter(r=>(r.Status||'')===s);return `<h4>${ic(IC_ETAPA[s]||'alerta')}${esc(s||'Sin status')}<span>${rs.length}</span></h4><div class="lista" style="margin:0">${rs.map(r=>filaHTML(r,true)).join('')}</div>`}).join('')||'<div class="vacio">Sin campañas activas.</div>'}</section>
   <aside><h4>Cambios de los últimos 7 días</h4><div class="hist" style="margin-top:0">${hs.length?hs.map(histHTML).join(''):'<div class="vacio">Sin cambios esta semana.</div>'}</div></aside></div></main>`;enlazar()}
@@ -255,10 +259,10 @@ async function renderEquipo(){
     enlazar();
     document.querySelectorAll('[data-copiar]').forEach(b=>b.onclick=()=>copiar(linkPersonal(b.dataset.copiar)));
     document.querySelectorAll('[data-renovar]').forEach(b=>b.onclick=async()=>{if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='¿Seguro? El anterior deja de servir';b.classList.add('danger');return}
-      b.disabled=true;try{const r=await llamar('nuevoLink',{objetivo:b.dataset.renovar});EQ_NUEVO=null;await cargarEquipo();pinta();copiar(linkPersonal(r.perfil.llave))}catch(e){toast(e.message,true);b.disabled=false}});
+      b.disabled=true;try{const r=await llamar('nuevoLink',{objetivo:b.dataset.renovar});EQ_NUEVO=null;if(r.equipo)EQ=r.equipo;else await cargarEquipo();pinta();copiar(linkPersonal(r.perfil.llave))}catch(e){toast(e.message,true);b.disabled=false}});
     const rol=$('#np-r');const pl=()=>{$('#np-pl').hidden=rol.value!=='advisor'};rol.onchange=pl;pl();
     $('#np-go').onclick=async e=>{const bt=e.currentTarget;const n=$('#np-n').value.trim();if(!n){toast('Escribe el nombre.',true);return}
-      bt.disabled=true;bt.textContent='Creando…';try{const r=await llamar('crearPerfil',{nombre:n,rol:rol.value,plantilla:$('#np-p').value});EQ_NUEVO=r.perfil;await cargarEquipo();try{await sincronizar();S.datos=construir()}catch(x){}pinta();toast('Perfil creado')}
+      bt.disabled=true;bt.textContent='Creando… tarda unos segundos';try{const r=await llamar('crearPerfil',{nombre:n,rol:rol.value,plantilla:$('#np-p').value});EQ_NUEVO=r.perfil;if(r.equipo)EQ=r.equipo;else await cargarEquipo();pinta();toast('Perfil creado');sincronizar().then(()=>{S.datos=construir();if(S.advisor===EQUIPO&&!S.abierta)pinta()}).catch(()=>{})}
       catch(err){toast(err.message,true);bt.disabled=false;bt.textContent='Crear perfil'}};
   };
   pinta();if(!EQ){try{await cargarEquipo();if(S.advisor===EQUIPO)pinta()}catch(e){toast(e.message,true)}}}
@@ -271,7 +275,7 @@ async function cambiar(id,campo,valor){const H=hojaMia();const r=H.filas.find(x=
 }
 function tipo(campo,v,H){if((H.listas||{})[campo])return'lista';if(BOOL.includes(campo)||typeof v==='boolean')return'bool';if(/fecha/i.test(campo))return'fecha';if(/link|dashboard/i.test(campo))return'link';if(/nota/i.test(campo))return'texto';return'linea'}
 function campoHTML(campo,v,H,id){const t=tipo(campo,v,H);const n=`data-c="${esc(campo)}"`;let inp;
-  if(t==='lista'){const L=H.listas[campo];inp=`<select ${n}><option value=""></option>${(v&&!L.includes(v)?[v].concat(L):L).map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
+  if(t==='lista'){const L=H.listas[campo];inp=`<select ${n}>${v&&['Status','Puntaje'].includes(campo)?'':'<option value=""></option>'}${(v&&!L.includes(v)?[v].concat(L):L).map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
   else if(t==='bool')inp=`<input type="checkbox" ${n} ${v===true?'checked':''}>`;
   else if(t==='fecha'){const iso=/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));inp=`<div class="fe"><input type="date" ${n} value="${iso?esc(v):''}">${!iso&&v!=null&&v!==''?`<small>${PEND.test(String(v).trim())?'Marcada como pendiente':'Estaba escrito: "'+esc(v)+'"'}</small>${PEND.test(String(v).trim())?'':sugerencia(campo,v)}`:''}</div>`}
   else if(t==='link')inp=`<div class="lnk"><input type="url" ${n} value="${esc(v||'')}" placeholder="https://">${v&&/^https?:/.test(v)?`<a href="${esc(v)}" target="_blank" rel="noopener" title="Abrir enlace">↗</a>`:''}</div>`;
@@ -294,9 +298,9 @@ function abrir(id){const H=hojaMia();const r=id?H.filas.find(x=>x._id===id):null
   histCampana(id).then(L=>{if(!w.isConnected||!L.length)return;hsC=L;const g=[...w.querySelectorAll('.grupo h3')].find(h=>h.textContent==='Historial de esta campaña');if(!g)return;const box=g.parentElement;box.innerHTML='<h3>Historial de esta campaña</h3>'+L.map((h,i)=>histHTML(h).replace(/<\/div><\/div>$/,restaurable(h)&&S.sesion.rol==='advisor'?`<button class="rest" data-rest="${i}">Restaurar ${esc(vis(h.antes)===''?'vacío':vis(h.antes))}</button></div></div>`:'</div></div>')).join('');box.querySelectorAll('[data-rest]').forEach(b=>b.onclick=async()=>{const h=hsC[+b.dataset.rest];b.disabled=true;await cambiar(id,h.campo,h.antes===undefined?'':h.antes);cerrar();setTimeout(()=>abrir(id),120)})});
   w.querySelectorAll('[data-rest]').forEach(b=>b.onclick=async()=>{const h=hsC[+b.dataset.rest];b.disabled=true;await cambiar(id,h.campo,h.antes===undefined?'':h.antes);cerrar();setTimeout(()=>abrir(id),120)});
   w.addEventListener('click',e=>{const b=e.target.closest('[data-ck]');if(b&&!b.disabled)toggleCheck(id,b.dataset.ck,w)});
-  w.addEventListener('click',async e=>{if(e.target.closest('[data-tr-open]')){const c=w.querySelector('.tr-confirm');c.hidden=false;c.querySelector('.tr-n').textContent=w.querySelector('#tr-dest').value;c.scrollIntoView({block:'nearest'})}
+  w.addEventListener('click',async e=>{if(e.target.closest('[data-tr-open]')){if(!w.querySelector('#tr-dest').value){toast('Primero elige a quién se la pasas.',true);w.querySelector('#tr-dest').focus();return}const c=w.querySelector('.tr-confirm');c.hidden=false;c.querySelector('.tr-n').textContent=w.querySelector('#tr-dest').value;c.scrollIntoView({block:'nearest'})}
     if(e.target.closest('[data-tr-no]'))w.querySelector('.tr-confirm').hidden=true;
-    const g=e.target.closest('[data-tr-go]');if(g&&!g.disabled){g.disabled=true;g.textContent='Pasando…';const dest=w.querySelector('#tr-dest').value;
+    const g=e.target.closest('[data-tr-go]');if(g&&!g.disabled&&w.querySelector('#tr-dest').value){g.disabled=true;g.textContent='Pasando…';const dest=w.querySelector('#tr-dest').value;
       try{await api('transferir',{id,dest});toast('Campaña pasada a '+dest);w.remove();S.abierta=null;S.datos=construir();render()}catch(err){toast(err.message,true);g.disabled=false;g.textContent='Sí, pasarla'}}});
   enlazarNota(id,w);
   w.addEventListener('click',async e=>{const b=e.target.closest('[data-fx]');if(!b||b.disabled)return;b.disabled=true;const o=JSON.parse(b.dataset.fx);for(const k of Object.keys(o))await cambiar(id,k,o[k]);cerrar();setTimeout(()=>abrir(id),120)});
@@ -306,7 +310,7 @@ const ckPend={};
 function restaurable(h){return !['Nueva campaña','Traspaso','Nota','Notas'].includes(h.campo)&&(hojaMia().encabezados||[]).includes(h.campo)}
 function traspasoHTML(){const otras=Object.keys(CFG.hojas).filter(n=>n!==S.sesion.hoja);if(!otras.length||S.sesion.rol!=='advisor')return'';
   return `<div class="grupo tras"><h3>Pasar a otra advisor</h3><p class="nota" style="margin-top:0">Si ya no llevas esta campaña, pásala a otra advisor. Se lleva todos sus datos y su historial.</p>
-  <div class="tr-row"><select id="tr-dest" aria-label="Advisor que la recibe">${otras.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="btn ghost" data-tr-open>Pasar campaña</button></div>
+  <div class="tr-row"><select id="tr-dest" aria-label="Advisor que la recibe"><option value="" selected disabled>Elige a quién</option>${otras.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="btn ghost" data-tr-open>Pasar campaña</button></div>
   <div class="tr-confirm" hidden><p><b>¿Seguro?</b> La campaña sale de tu lista y de tu historial, y pasa a <b class="tr-n"></b> con todo su historial. Esta acción queda registrada.</p><div class="tr-row"><button class="btn ghost" data-tr-no>Cancelar</button><button class="btn danger" data-tr-go>Sí, pasarla</button></div></div></div>`}
 function pintarCk(id,w){const H=hojaMia();const r=H.filas.find(x=>x._id===id);const box=w.querySelector('[data-cklist]');if(!box||!r)return;const t=document.createElement('div');t.innerHTML=checklistHTML(r,H);box.replaceWith(t.firstElementChild)}
 async function toggleCheck(id,c,w){const H=hojaMia();const r=H.filas.find(x=>x._id===id);if(!r)return;const k=id+'|'+c;const nv=!(r[c]===true);r[c]=nv;pintarCk(id,w);
@@ -319,9 +323,10 @@ async function recargarHist(){S.datos=construir()}
 function enlazar(){const s=$('#salir');if(s)s.onclick=()=>salir();document.querySelectorAll('[data-presentar]').forEach(b=>b.onclick=()=>presentar(b.dataset.presentar));const xb=$('#xls');if(xb)xb.onclick=()=>descargarExcel(xb);
   document.querySelectorAll('[data-vista]').forEach(b=>b.onclick=()=>{S.vista=b.dataset.vista;render()});
   document.querySelectorAll('[data-adv]').forEach(b=>b.onclick=()=>{S.advisor=b.dataset.adv;render()});
-  document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{S.filtro=b.dataset.f;S.lim=150;render()});
+  document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{const f=b.dataset.f;S.filtro=(S.filtro===f&&f!=='Activas')?'Activas':f;S.lim=150;render()});
+  document.querySelectorAll('[data-quitar]').forEach(b=>b.onclick=()=>{S.filtro='Activas';S.q='';S.lim=150;render()});
   const mas=document.querySelector('[data-mas]');if(mas)mas.onclick=()=>{S.lim+=150;render()};
-  let _qt;const q=$('#q');if(q)q.oninput=()=>{clearTimeout(_qt);_qt=setTimeout(()=>{S.q=q.value;S.lim=150;const H=hojaMia();const F=filtradas(H);document.querySelector('.lista').innerHTML=F.length?F.slice(0,S.lim).map(r=>filaHTML(r)).join('')+(F.length>S.lim?`<p class="nota">Mostrando ${S.lim} de ${F.length}. Afina la búsqueda para ver menos.</p>`:''):'<div class="vacio">No hay campañas que coincidan.</div>';enlazarFilas()},180)};
+  let _qt;const q=$('#q');if(q)q.oninput=()=>{clearTimeout(_qt);_qt=setTimeout(()=>{S.q=q.value;S.lim=150;const H=hojaMia();const F=filtradas(H);document.querySelector('.lista').innerHTML=F.length?F.slice(0,S.lim).map(r=>filaHTML(r)).join('')+(F.length>S.lim?`<p class="nota">Mostrando ${S.lim} de ${F.length}. Afina la búsqueda para ver menos.</p>`:''):vacioHTML();enlazarFilas();document.querySelectorAll('[data-quitar]').forEach(b=>b.onclick=()=>{S.filtro='Activas';S.q='';S.lim=150;render()})},180)};
   const n=$('#nueva');if(n)n.onclick=()=>abrir(null);enlazarFilas()}
 function enlazarFilas(){document.querySelectorAll('[data-abrir]').forEach(el=>{el.onclick=()=>abrir(el.dataset.abrir);el.onkeydown=e=>{if(e.key==='Enter')abrir(el.dataset.abrir)}});
   document.querySelectorAll('[data-st]').forEach(sel=>sel.onchange=async()=>{sel.disabled=true;await cambiar(sel.dataset.st,'Status',sel.value);programarRender()})}

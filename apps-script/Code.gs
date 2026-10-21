@@ -113,14 +113,14 @@ function crearPerfil(u, p) {
   }
   const llave = llaveNueva(), sh = hojaUsuarios();
   sh.appendRow(filaUsuario({ Perfil: nombre, Hoja: hoja, Rol: rol, Llave: llave, Link: linkDe(llave) }));
-  return { perfil: { perfil: nombre, hoja: hoja, rol: rol, llave: llave } };
+  return { perfil: { perfil: nombre, hoja: hoja, rol: rol, llave: llave }, equipo: equipo(u) };
 }
 function nuevoLink(u, perfil) {
   soloAdmin(u);
   const x = usuarios().find(y => y.perfil === perfil); if (!x) throw new Error('No encuentro ese perfil.');
   const llave = llaveNueva(), sh = hojaUsuarios(); sh.getRange(x.fila, colUsuarios('Llave')).setValue(llave);
   const cl = colUsuarios('Link'); if (cl) sh.getRange(x.fila, cl).setValue(linkDe(llave));
-  return { perfil: { perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: llave } };
+  return { perfil: { perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: llave }, equipo: equipo(u) };
 }
 
 /* ---------- modelo estándar de campaña ----------
@@ -165,13 +165,15 @@ function leer(nombre) {
   const sh = SpreadsheetApp.getActive().getSheetByName(nombre); if (!sh) throw new Error('No encuentro la hoja ' + nombre + '.');
   const h = encab(sh), m = mapa(h), idc = h.indexOf(IDC), n = Math.max(sh.getLastRow() - 1, 0);
   const vals = n ? sh.getRange(2, 1, n, h.length).getValues() : [];
-  const filas = [];
+  const filas = []; let nuevos = false;
   vals.forEach((r, k) => {
     if (vacia(r, m)) return;
-    if (!r[idc]) { r[idc] = nombre.slice(0, 3).toLowerCase() + Utilities.getUuid().slice(0, 8); sh.getRange(k + 2, idc + 1).setValue(r[idc]); }
+    if (!r[idc]) { r[idc] = nombre.slice(0, 3).toLowerCase() + Utilities.getUuid().slice(0, 8); nuevos = true; }
     const v = {}; Object.keys(m).forEach(c => { const x = valorDe(r, m[c]); if (x !== undefined) v[c] = x; });
     filas.push({ id: String(r[idc]), hoja: nombre, fila: k + 2, v: v });
   });
+  // Los ID nuevos se escriben de una sola vez (una escritura por campaña hacía muy lenta la primera carga).
+  if (nuevos) sh.getRange(2, idc + 1, vals.length, 1).setValues(vals.map(r => [r[idc] || '']));
   // Las listas son las mismas para todas (LISTAS_STD). Solo una columna propia, fuera del modelo, usa su propia lista.
   const listas = {}; Object.keys(LISTAS_STD).forEach(k => { listas[k] = LISTAS_STD[k]; });
   const extras = Object.keys(m).filter(c => CAMPOS.indexOf(c) < 0);
