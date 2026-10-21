@@ -1,0 +1,11 @@
+# Datos de clientes: nunca van al repo. La base de datos es la hoja de Google.
+*.xlsx
+*.xls
+*.csv
+
+# Configuración local de clasp (cada quien tiene la suya)
+.clasp.json
+.clasprc.json
+
+node_modules/
+.DS_Store
