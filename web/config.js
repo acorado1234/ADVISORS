@@ -5,7 +5,5 @@ window.CONFIG = {
   API_URL: 'https://script.google.com/macros/s/AKfycbyln5lW2Tm5IS0z72o2_SnSSZPHWFTfwvTBZ6aFxqqYtP1hJ3ckxK2RIJDDnPGW_y1buA/exec',
   // URL de la hoja de Google (la que se abre en el navegador, termina en /edit). Se usa para "Descargar Excel".
   SHEET_URL: 'https://docs.google.com/spreadsheets/d/1fCHd1DENhgKNaZx2PJQZsnewfwOz_Lft5oqcIc_ttJI/edit',
-  // Respaldo: los perfiles reales se leen de la pestaña _Usuarios de la hoja.
-  PERFILES: ['Mafer', 'Adriana', 'Cintia', 'Andrea', 'Presentación'],
   TITULO: 'Status de campañas'
 };

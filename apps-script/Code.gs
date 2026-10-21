@@ -1,12 +1,12 @@
 /**
  * Status de campañas · Advisors — servidor (Google Apps Script)
  * La hoja de cálculo de Andrea es la base de datos. Este script recibe los
- * cambios del tablero, revisa el PIN, escribe en la hoja y guarda el historial.
+ * cambios del tablero, revisa el link personal, escribe en la hoja y guarda el historial.
  *
  * Las advisors NO están fijas en el código: salen de la pestaña _Usuarios
- * (filas con Rol = advisor). Para sumar o quitar una advisor basta con editar
- * esa pestaña; no hace falta tocar el código ni volver a publicar.
+ * (filas con Rol = advisor). Andrea crea perfiles nuevos desde el tablero (Equipo).
  */
+const TABLERO_URL = 'https://acorado1234.github.io/ADVISORS/';
 const ADVISORS_INICIALES = ['Mafer', 'Adriana', 'Cintia'];
 const USUARIOS = '_Usuarios', HISTORIAL = '_Historial', IDC = '_id';
 const CLAVES = ['Status', 'Agencia', 'Marca', 'Campaña'];
@@ -26,10 +26,12 @@ function salida(p) {
   return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
 }
 function rutear(p) {
-  if (p.action === 'perfiles') return { perfiles: usuarios().map(u => u.perfil) };
-  if (p.action === 'login') return login(p.perfil, p.pin);
+  if (p.action === 'entrar') return entrar(p.llave);
   const u = verificar(p.perfil, p.token);
   switch (p.action) {
+    case 'equipo': return equipo(u);
+    case 'crearPerfil': return conLock(() => crearPerfil(u, p));
+    case 'nuevoLink': return conLock(() => nuevoLink(u, p.objetivo));
     case 'datos': return datos(u);
     case 'histCampana': return { historial: histCampana(u, p.id) };
     case 'cambiar': return conLock(() => cambiar(u, p.id, p.campo, p.valor));
@@ -40,27 +42,76 @@ function rutear(p) {
 }
 function conLock(fn) { const l = LockService.getScriptLock(); l.waitLock(25000); try { return fn(); } finally { l.releaseLock(); } }
 
-/* ---------- usuarios, PIN y sesión ---------- */
+/* ---------- usuarios, link personal y sesión ----------
+ * Nadie escribe PIN. Cada perfil tiene una llave al azar (columna Llave de _Usuarios)
+ * y un link personal = TABLERO_URL + '#k=' + llave. Al abrir el link, la laptop queda
+ * recordada DIAS_SESION días. Si un link se comparte por error, "Nuevo link" cambia la
+ * llave y cierra la sesión en todas las laptops donde se usó el anterior.
+ */
+const COLS = ['Perfil', 'Hoja', 'Rol', 'Llave', 'Link'];
+const ROLES = ['advisor', 'admin', 'presentacion'];
+const DIAS_SESION = 180;
 function secreto() { const pr = PropertiesService.getScriptProperties(); let s = pr.getProperty('SECRETO'); if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); pr.setProperty('SECRETO', s); } return s; }
 function firmar(t) { return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(t, secreto())); }
+function llaveNueva() { return Utilities.getUuid().replace(/-/g, '') + Utilities.getUuid().replace(/-/g, '').slice(0, 8); }
+function linkDe(llave) { return TABLERO_URL + '#k=' + llave; }
+function hojaUsuarios() { const sh = SpreadsheetApp.getActive().getSheetByName(USUARIOS); if (!sh) throw new Error('Falta la hoja _Usuarios. Ejecuta configurar().'); return sh; }
 function usuarios() {
-  const sh = SpreadsheetApp.getActive().getSheetByName(USUARIOS); if (!sh) throw new Error('Falta la hoja _Usuarios. Ejecuta configurar().');
-  return sh.getDataRange().getValues().slice(1).filter(r => r[0]).map(r => ({ perfil: String(r[0]).trim(), pin: String(r[1]).trim(), hoja: String(r[2] || '').trim(), rol: String(r[3] || 'advisor').trim().toLowerCase() }));
+  return hojaUsuarios().getDataRange().getValues().slice(1).map((r, i) => ({ fila: i + 2, perfil: String(r[0] || '').trim(), hoja: String(r[1] || '').trim(), rol: String(r[2] || 'advisor').trim().toLowerCase(), llave: String(r[3] || '').trim() })).filter(u => u.perfil);
 }
 /** Pestañas de advisors, en el orden de _Usuarios. */
 function hojas() { const out = []; usuarios().forEach(u => { if (u.rol === 'advisor' && u.hoja && out.indexOf(u.hoja) < 0) out.push(u.hoja); }); return out; }
-function login(perfil, pin) {
-  const c = CacheService.getScriptCache(), k = 'intentos_' + perfil, n = +(c.get(k) || 0);
-  if (n >= 5) throw new Error('Demasiados intentos. Espera 5 minutos.');
-  const u = usuarios().find(x => x.perfil === String(perfil || '').trim());
-  if (!u || u.pin !== String(pin || '').trim()) { c.put(k, String(n + 1), 300); throw new Error('El PIN no coincide con ese perfil.'); }
-  c.remove(k); const exp = Date.now() + 12 * 3600e3;
-  return { perfil: u.perfil, rol: u.rol, hoja: u.rol === 'advisor' ? u.hoja : '', token: exp + '.' + firmar(u.perfil + '|' + exp), exp: exp };
+function sesion(u) {
+  const exp = Date.now() + DIAS_SESION * 864e5;
+  return { perfil: u.perfil, rol: u.rol, hoja: u.rol === 'advisor' ? u.hoja : '', token: exp + '.' + firmar(u.perfil + '|' + exp + '|' + u.llave), exp: exp };
+}
+function entrar(llave) {
+  llave = String(llave || '').trim();
+  const u = llave.length >= 20 && usuarios().find(x => x.llave === llave && ROLES.indexOf(x.rol) >= 0);
+  if (!u) throw new Error('Este link ya no funciona. Pídele a Andrea tu link nuevo.');
+  return sesion(u);
 }
 function verificar(perfil, token) {
   const [exp, sig] = String(token || '').split('.'); const u = usuarios().find(x => x.perfil === perfil);
-  if (!u || !exp || +exp < Date.now() || sig !== firmar(perfil + '|' + exp)) throw new Error('Tu sesión venció. Vuelve a entrar con tu PIN.');
+  if (!u || ROLES.indexOf(u.rol) < 0 || !u.llave || !exp || +exp < Date.now() || sig !== firmar(perfil + '|' + exp + '|' + u.llave)) throw new Error('Tu sesión se cerró. Vuelve a abrir tu link personal.');
   return u;
+}
+
+/* ---------- equipo: solo admin ---------- */
+function soloAdmin(u) { if (u.rol !== 'admin') throw new Error('Solo Andrea puede administrar perfiles.'); }
+function equipo(u) {
+  soloAdmin(u);
+  return { equipo: usuarios().map(x => ({ perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: x.llave })), hojas: hojas() };
+}
+function crearPerfil(u, p) {
+  soloAdmin(u);
+  const nombre = String(p.nombre || '').trim().replace(/\s+/g, ' '), rol = String(p.rol || 'advisor').toLowerCase();
+  if (!nombre || nombre.length > 40 || /^_/.test(nombre)) throw new Error('Escribe un nombre de hasta 40 letras.');
+  if (ROLES.indexOf(rol) < 0) throw new Error('Rol no válido.');
+  const ss = SpreadsheetApp.getActive();
+  if (usuarios().some(x => x.perfil.toLowerCase() === nombre.toLowerCase())) throw new Error('Ya existe un perfil con ese nombre.');
+  let hoja = '';
+  if (rol === 'advisor') {
+    hoja = nombre;
+    if (!ss.getSheetByName(hoja)) {
+      // La pestaña nueva copia columnas, listas desplegables, casillas y formato de una advisor existente, sin sus datos.
+      const base = ss.getSheetByName(String(p.plantilla || '')) || ss.getSheetByName(hojas()[0] || '');
+      if (!base) throw new Error('No hay una pestaña de advisor para copiar las columnas.');
+      const nueva = base.copyTo(ss).setName(hoja);
+      const n = Math.max(nueva.getMaxRows() - 1, 1);
+      nueva.getRange(2, 1, n, nueva.getMaxColumns()).clearContent();
+      ss.setActiveSheet(nueva); ss.moveActiveSheet(ss.getSheetByName(base.getName()).getIndex() + 1);
+    }
+  }
+  const llave = llaveNueva(), sh = hojaUsuarios();
+  sh.appendRow([nombre, hoja, rol, llave, linkDe(llave)]);
+  return { perfil: { perfil: nombre, hoja: hoja, rol: rol, llave: llave } };
+}
+function nuevoLink(u, perfil) {
+  soloAdmin(u);
+  const x = usuarios().find(y => y.perfil === perfil); if (!x) throw new Error('No encuentro ese perfil.');
+  const llave = llaveNueva(); hojaUsuarios().getRange(x.fila, 4, 1, 2).setValues([[llave, linkDe(llave)]]);
+  return { perfil: { perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: llave } };
 }
 
 /* ---------- lectura ---------- */
@@ -141,17 +192,16 @@ function transferir(u, id, dest) {
 }
 
 /* ---------- configuración inicial: se ejecuta una vez desde el editor ---------- */
-function pinAzar() { return String(Math.floor(1000 + Math.random() * 9000)); }
 function configurar() {
   const ss = SpreadsheetApp.getActive();
   let us = ss.getSheetByName(USUARIOS);
   if (!us) {
     us = ss.insertSheet(USUARIOS);
-    const filas = [['Perfil', 'PIN', 'Hoja', 'Rol']]
-      .concat(ADVISORS_INICIALES.map(n => [n, pinAzar(), n, 'advisor']))
-      .concat([['Andrea', pinAzar(), '', 'admin'], ['Presentación', pinAzar(), '', 'presentacion']]);
-    us.getRange(1, 2, filas.length, 1).setNumberFormat('@'); // el PIN se guarda como texto (no pierde ceros)
-    us.getRange(1, 1, filas.length, 4).setValues(filas); us.setFrozenRows(1);
+    const fila = (perfil, hoja, rol) => { const k = llaveNueva(); return [perfil, hoja, rol, k, linkDe(k)]; };
+    const filas = [COLS]
+      .concat(ADVISORS_INICIALES.map(n => fila(n, n, 'advisor')))
+      .concat([fila('Andrea', '', 'admin'), fila('Presentación', '', 'presentacion')]);
+    us.getRange(1, 1, filas.length, COLS.length).setValues(filas); us.setFrozenRows(1); us.autoResizeColumns(1, 3);
   }
   let hs = ss.getSheetByName(HISTORIAL);
   if (!hs) { hs = ss.insertSheet(HISTORIAL); hs.getRange(1, 1, 1, 9).setValues([['Fecha y hora','Perfil','Hoja','ID','Campaña','Campo','Antes','Después','ts']]); hs.setFrozenRows(1); }
@@ -161,5 +211,6 @@ function configurar() {
   const faltan = hojas().filter(n => !ss.getSheetByName(n));
   if (faltan.length) throw new Error('No encuentro estas pestañas: ' + faltan.join(', ') + '. Revisa la columna Hoja de _Usuarios.');
   hojas().forEach(n => leer(n)); secreto();
-  Logger.log('Listo. Los PIN están en la pestaña _Usuarios.');
+  const andrea = usuarios().find(x => x.rol === 'admin');
+  Logger.log('Listo. Los links personales están en la pestaña _Usuarios.' + (andrea ? ' Link de ' + andrea.perfil + ': ' + linkDe(andrea.llave) : ''));
 }

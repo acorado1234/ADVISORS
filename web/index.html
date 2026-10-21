@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Status de campañas</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#6D3BEA">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -13,6 +17,7 @@
 --a:#14946E;--a2:#E2F5EE;--b:#C98A06;--b2:#FDF3DC;--c:#D9443A;--c2:#FCE7E5;--r:14px;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#15121F;--card:#1E1A2B;--ink:#F2F0F8;--ink2:#C9C5D6;--muted:#9893AB;--line:#2E2940;--soft:#25203A;--violet:#9C7BFF;--violet2:#2B2246;--a:#3CCB9B;--a2:#173A30;--b:#F0B435;--b2:#3A2F14;--c:#FF7A6F;--c2:#3D1F1D;color-scheme:dark}}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html,body{height:100%}
 body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 Figtree,system-ui,-apple-system,"Segoe UI",sans-serif;padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -139,6 +144,12 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .pr-g h3{margin:0 0 8px;font-size:15px;display:flex;gap:6px}.pr-g h3 span{color:var(--muted);font-weight:600}
 .pr-i{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:14px}.pr-i .pt{min-width:38px;height:24px;font-size:12px}
 @media (max-width:720px){.ps{grid-template-columns:1fr}.pov-f .nota{display:none}}
+.fila.eq{grid-template-columns:auto minmax(0,1fr) auto}.eq-b{display:flex;gap:8px;flex-wrap:wrap}
+.top .wrap{min-width:0}.top h1{flex:none}.top nav{overflow-x:auto;min-width:0;scrollbar-width:none}.top nav button{flex:none;white-space:nowrap}
+.av{display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--violet2);color:var(--violet);font-weight:800}
+.nuevo-p{margin:22px 0 40px;padding:16px;border:1px solid var(--line);border-radius:16px;background:var(--card)}.nuevo-p h3{margin:0 0 6px;font-size:16px}
+.btn.ghost.danger{background:var(--c2);color:var(--c);border-color:transparent}
+@media (max-width:720px){.fila.eq{grid-template-columns:auto minmax(0,1fr)}.eq-b{grid-column:1/-1}.eq-b .btn{flex:1}.top h1{font-size:15px}}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0));transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:10px 16px;border-radius:12px;font-weight:600;z-index:40;font-size:14px}
 .toast.bad{background:var(--c);color:#fff}
 .carga{padding:60px 0;text-align:center;color:var(--muted)}
@@ -150,7 +161,7 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 <div id="app"></div>
 <script>
 (function(){
-const C=Object.assign({TITULO:'Status de campañas',PERFILES:['Mafer','Adriana','Cintia','Andrea','Presentación']},window.CONFIG||{});
+const C=Object.assign({TITULO:'Status de campañas'},window.CONFIG||{});
 const $=s=>document.querySelector(s);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let S={lim:150,sesion:null,datos:null,vista:'campanas',filtro:'Activas',q:'',abierta:null,advisor:null};
@@ -182,13 +193,12 @@ function histVisible(){const u=S.sesion;if(!u||u.rol!=='advisor')return HIST;con
 function recDe(id,hoja){const h=HIST.find(x=>x.id===id&&x.campo==='Traspaso'&&x.despues===hoja);return h&&Date.now()-h.ts<14*864e5?{de:h.antes,fecha:String(h.fecha).slice(0,10)}:null}
 function construir(){const u=S.sesion;const nombres=u.rol==='advisor'?[u.hoja]:Object.keys(CFG.hojas);const out={perfil:u.perfil,rol:u.rol,hojas:{},historial:histVisible()};
   nombres.forEach(n=>{const h=CFG.hojas[n];if(!h)return;out.hojas[n]={hoja:n,encabezados:h.encabezados.filter(x=>x),listas:h.listas||{},filas:Object.values(CAMP).filter(x=>x.hoja===n).sort((a,b)=>(a.fila||0)-(b.fila||0)).map(x=>Object.assign({_id:x.id,_rec:recDe(x.id,n)},x.v||{}))}});return out}
-let _rt;function programarRender(){clearTimeout(_rt);_rt=setTimeout(()=>{if(S.sesion&&S.datos&&!S.abierta)render()},250)}
+let _rt;function programarRender(){clearTimeout(_rt);_rt=setTimeout(()=>{if(S.sesion&&S.datos&&!S.abierta&&S.advisor!==EQUIPO)render()},250)}
 function refrescar(){if(!S.sesion||!S.datos)return;S.datos=construir();programarRender()}
 async function sincronizar(){const d=await llamar('datos');CFG=d.config;const n={};(d.campanas||[]).forEach(x=>n[x.id]=x);CAMP=n;HIST=d.historial||[]}
 async function histCampana(id){try{return (await llamar('histCampana',{id})).historial||[]}catch(e){return[]}}
 function aplicar(r){if(r.campana)CAMP[r.campana.id]=r.campana;if(r.hist)HIST=[r.hist].concat(HIST)}
 async function api(action,p){p=p||{};
-  if(action==='login')return llamar('login',{perfil:p.perfil,pin:p.pin});
   if(action==='datos'){await sincronizar();return construir()}
   if(action==='cambiar'){const r=await llamar('cambiar',{id:p.id,campo:p.campo,valor:p.valor});aplicar(r);return{guardado:true}}
   if(action==='agregar'){const r=await llamar('agregar',{valores:p.valores});aplicar(r);return{id:r.campana.id}}
@@ -198,30 +208,29 @@ setInterval(async()=>{if(S.sesion&&S.datos&&!S.abierta&&document.visibilityState
 document.addEventListener('visibilitychange',async()=>{if(document.visibilityState==='visible'&&S.sesion&&S.datos&&!S.abierta){try{await sincronizar();S.datos=construir();programarRender()}catch(e){}}});
 function descargarExcel(){if(!C.SHEET_URL){toast('Configura SHEET_URL en config.js.',true);return}window.open(C.SHEET_URL.replace(/\/edit.*$/,'')+'/export?format=xlsx','_blank','noopener')}
 
-/* ---------- login ---------- */
-let PERF=null;
-async function cargarPerfiles(){if(PERF)return PERF;try{const p=(await llamar('perfiles')).perfiles;PERF=p&&p.length?p:C.PERFILES}catch(e){PERF=C.PERFILES}return PERF}
-function vistaLogin(err){const perf=PERF||C.PERFILES;
-  $('#app').innerHTML=`<main class="login"><div class="login-box"><h1>${esc(C.TITULO||'Status de campañas')}</h1><p>Elige tu perfil y escribe tu PIN.</p>
-  <div class="perfiles" role="group" aria-label="Perfil">${perf.map(n=>`<button type="button" data-perfil="${esc(n)}" aria-pressed="false">${esc(n)}</button>`).join('')}</div>
-  <input class="pin" id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" aria-label="PIN">
+/* ---------- entrada con link personal (sin PIN) ---------- */
+function llaveDe(txt){const m=String(txt||'').match(/[#&?]?k=([A-Za-z0-9]{20,})/)||String(txt||'').trim().match(/^([A-Za-z0-9]{20,})$/);return m?m[1]:''}
+function guardarSesion(r){S.sesion={perfil:r.perfil,rol:r.rol,hoja:r.hoja,token:r.token,exp:r.exp};S.datos=null;S.advisor=null;S.vista='campanas';try{localStorage.setItem('sesion',JSON.stringify(S.sesion))}catch(e){}}
+async function entrarCon(llave){S.sesion=null;const r=await llamar('entrar',{llave});guardarSesion(r)}
+function vistaLogin(err){
+  $('#app').innerHTML=`<main class="login"><div class="login-box"><h1>${esc(C.TITULO||'Status de campañas')}</h1><p>Entra con tu link personal. Ábrelo una vez y esta laptop queda guardada.</p>
+  <input class="pin" id="lk" type="text" autocomplete="off" placeholder="Pega aquí tu link" aria-label="Tu link personal" style="letter-spacing:0;font-size:15px">
   <button class="btn full" id="entrar">Entrar</button><div class="err" id="err">${esc(err||'')}</div>
+  <p class="demo">¿No tienes tu link? Pídeselo a Andrea.</p>
 </div></main>`;
-  let elegido=null;
-  document.querySelectorAll('[data-perfil]').forEach(b=>b.onclick=()=>{elegido=b.dataset.perfil;document.querySelectorAll('[data-perfil]').forEach(x=>x.setAttribute('aria-pressed',x===b));$('#pin').focus()});
-  const go=async()=>{if(!elegido){$('#err').textContent='Elige tu perfil primero.';return}
-    let it={};try{it=JSON.parse(localStorage.getItem('intentos')||'{}')}catch(e){}if(it.hasta>Date.now()){$('#err').textContent='Demasiados intentos. Espera '+Math.ceil((it.hasta-Date.now())/60000)+' minutos.';return}
-    try{$('#entrar').disabled=true;const r=await api('login',{perfil:elegido,pin:$('#pin').value});S.sesion={perfil:r.perfil,rol:r.rol,hoja:r.hoja,token:r.token,exp:Date.now()+12*36e5};localStorage.removeItem('intentos');localStorage.setItem('sesion',JSON.stringify(S.sesion));cargar()}
-    catch(e){let it={};try{it=JSON.parse(localStorage.getItem('intentos')||'{}')}catch(x){}it.n=(it.n||0)+1;if(it.n>=5){it={n:0,hasta:Date.now()+5*60000}}localStorage.setItem('intentos',JSON.stringify(it));$('#err').textContent=it.hasta?'Demasiados intentos. Espera 5 minutos.':e.message;$('#entrar').disabled=false}};
-  $('#entrar').onclick=go;$('#pin').onkeydown=e=>{if(e.key==='Enter')go()};
+  const go=async()=>{const k=llaveDe($('#lk').value);if(!k){$('#err').textContent='Ese no parece tu link. Cópialo completo.';return}
+    try{$('#entrar').disabled=true;await entrarCon(k);cargar()}catch(e){$('#err').textContent=e.message;$('#entrar').disabled=false}};
+  $('#entrar').onclick=go;$('#lk').onkeydown=e=>{if(e.key==='Enter')go()};
 }
-function salir(){S.sesion=null;S.datos=null;localStorage.removeItem('sesion');vistaLogin()}
+function salir(msg){S.sesion=null;S.datos=null;try{localStorage.removeItem('sesion')}catch(e){}vistaLogin(msg)}
 
 /* ---------- datos ---------- */
-async function cargar(){try{await initDB()}catch(e){$('#app').innerHTML=`<div class="carga">${esc(e.message)}</div>`;return}if(!S.sesion){$('#app').innerHTML='<div class="carga">Cargando…</div>';await cargarPerfiles();return vistaLogin()}
+async function cargar(){try{await initDB()}catch(e){$('#app').innerHTML=`<div class="carga">${esc(e.message)}</div>`;return}
+  const k=llaveDe(location.hash);if(k){history.replaceState(null,'',location.pathname+location.search);$('#app').innerHTML='<div class="carga">Entrando…</div>';try{await entrarCon(k)}catch(e){return salir(e.message)}}
+  if(!S.sesion)return vistaLogin();
   if(!S.datos)$('#app').innerHTML='<div class="carga">Cargando…</div>';
   try{S.datos=await api('datos');if(S.datos.rol!=='advisor'&&!S.advisor)S.advisor=Object.keys(S.datos.hojas)[0];render()}
-  catch(e){if(/sesión|PIN/.test(e.message)){salir();vistaLogin(e.message)}else $('#app').innerHTML=`<div class="carga">${esc(e.message)} <button class="btn ghost" onclick="location.reload()">Volver a intentar</button></div>`}}
+  catch(e){if(/sesión|link/.test(e.message)){salir(e.message)}else $('#app').innerHTML=`<div class="carga">${esc(e.message)} <button class="btn ghost" onclick="location.reload()">Volver a intentar</button></div>`}}
 function hojaMia(){return S.datos.hojas[S.sesion.hoja]||{encabezados:[],listas:{},filas:[]}}
 
 
@@ -266,7 +275,7 @@ function slideRes(resto,n){const L=(LIST.Status).filter(s=>!INACTIVOS.includes(s
 
 /* ---------- vistas ---------- */
 function topHTML(){const pres=S.sesion.rol!=='advisor';
-  const tabs=pres?Object.keys(S.datos.hojas).map(n=>`<button data-adv="${esc(n)}" ${S.advisor===n?'aria-current="page"':''}>${esc(n)}</button>`).join(''):
+  const tabs=pres?Object.keys(S.datos.hojas).map(n=>`<button data-adv="${esc(n)}" ${S.advisor===n?'aria-current="page"':''}>${esc(n)}</button>`).join('')+(S.sesion.rol==='admin'?`<button data-adv="${EQUIPO}" ${S.advisor===EQUIPO?'aria-current="page"':''}>Equipo</button>`:''):
   `<button data-presentar="${esc(S.sesion.hoja)}">Presentar</button><button data-vista="campanas" ${S.vista==='campanas'?'aria-current="page"':''}>Mis campañas</button><button data-vista="historial" ${S.vista==='historial'?'aria-current="page"':''}>Historial</button>`;
   return `<header class="top"><div class="wrap"><h1>${esc(C.TITULO||'Status de campañas')} <span class="who">${S.sesion.rol==='presentacion'?'Presentación':esc(S.sesion.perfil)}</span></h1><nav>${tabs}${S.sesion.rol==='admin'?'<button id="xls">Descargar Excel</button>':''}<button id="salir">Salir</button></nav></div></header>`}
 function leyendaHTML(){return `<div class="leyenda"><span class="pt A">A1</span><span class="pt B">B2</span><span class="pt C">C3</span><span>El puntaje indica qué tan compleja es la campaña: A1 es la más sencilla y C3 la más complicada.</span></div>`}
@@ -285,12 +294,42 @@ function render(){if(S.sesion.rol!=='advisor')return renderPres();
   $('#app').innerHTML=topHTML()+`<main class="wrap">${main}</main>`;enlazar()}
 function histHTML(h){return `<div class="h"><time>${fmtF(h.fecha)}</time><div><b>${esc(h.cuenta||'Campaña')}</b><small>${h.campo==='Nueva campaña'?'Nueva campaña':`${esc(h.campo)}: ${h.antes!==''&&h.antes!=null?`<span class="de">${esc(vis(h.antes))}</span> a `:''}${esc(vis(h.despues))}`}${S.sesion.rol!=='advisor'?`, por ${esc(h.perfil)}`:''}</small></div></div>`}
 function vis(v){return v===true?'Sí':v===false?'No':v}
-function renderPres(){const n=S.advisor;const H=S.datos.hojas[n]||{filas:[],listas:{}};const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status));
+function renderPres(){if(S.advisor===EQUIPO)return renderEquipo();const n=S.advisor;const H=S.datos.hojas[n]||{filas:[],listas:{}};const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status));
   const L=(H.listas.Status||LIST.Status).filter(s=>!INACTIVOS.includes(s));const semana=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
   const hs=(S.datos.historial||[]).filter(h=>h.perfil===n&&h.fecha.slice(0,10)>=semana);
   $('#app').innerHTML=topHTML()+`<main class="wrap pres"><div class="pres-h"><h2>${esc(n)}</h2><button class="btn violet" data-presentar="${esc(n)}">Presentar</button></div><p class="sub">${act.length} ${act.length===1?'campaña activa':'campañas activas'}. Solo lectura.</p>${leyendaHTML()}
   <div class="col"><section class="estado">${L.concat(act.some(r=>!r.Status)?['']:[]).filter(s=>act.some(r=>(r.Status||'')===s)).map(s=>`<h4>${esc(s||'Sin status')}</h4><div class="lista" style="margin:0">${act.filter(r=>(r.Status||'')===s).map(r=>filaHTML(r,true)).join('')}</div>`).join('')||'<div class="vacio">Sin campañas activas.</div>'}</section>
   <section><h4 style="margin:16px 0 6px;font-size:14px;color:var(--ink2)">Cambios de los últimos 7 días</h4><div class="hist" style="margin-top:0">${hs.length?hs.map(histHTML).join(''):'<div class="vacio">Sin cambios esta semana.</div>'}</div></section></div></main>`;enlazar()}
+
+/* ---------- equipo (solo Andrea): perfiles y links personales ---------- */
+const EQUIPO='__equipo';
+const ROL_TXT={advisor:'Advisor',admin:'Jefa · ve a todas',presentacion:'Solo ver y presentar'};
+let EQ=null,EQ_NUEVO=null;
+const linkPersonal=k=>location.origin+location.pathname+'#k='+k;
+async function copiar(t){try{await navigator.clipboard.writeText(t);toast('Link copiado')}catch(e){const i=document.createElement('textarea');i.value=t;document.body.appendChild(i);i.select();try{document.execCommand('copy');toast('Link copiado')}catch(x){toast('No pude copiarlo; cópialo a mano.',true)}i.remove()}}
+async function renderEquipo(){
+  const pinta=()=>{const L=EQ?EQ.equipo:[];const hs=EQ?EQ.hojas:[];
+    $('#app').innerHTML=topHTML()+`<main class="wrap"><h2 style="margin:24px 0 2px;font-size:24px">Equipo</h2><p class="nota" style="margin-top:0">Cada persona entra con su link personal: lo abre una vez en su laptop y queda guardada. Nadie escribe PIN.</p>
+    ${EQ_NUEVO?`<section class="hoy" aria-live="polite"><h2>Perfil creado: ${esc(EQ_NUEVO.perfil)}</h2><p class="nota" style="margin:0 0 10px">Mándale este link por WhatsApp o correo. Con abrirlo una vez ya entra.</p><div class="tr-row"><input class="buscar" readonly value="${esc(linkPersonal(EQ_NUEVO.llave))}" aria-label="Link de ${esc(EQ_NUEVO.perfil)}"><button class="btn violet" data-copiar="${esc(EQ_NUEVO.llave)}">Copiar link</button></div></section>`:''}
+    <div class="lista" style="margin:16px 0 0">${EQ?L.map(u=>`<div class="fila eq"><span class="av">${esc(u.perfil.slice(0,1).toUpperCase())}</span><div class="nm"><b>${esc(u.perfil)}</b><small>${esc(ROL_TXT[u.rol]||'Sin acceso')}${u.rol==='advisor'&&u.hoja?' · pestaña '+esc(u.hoja):''}</small></div>
+      <div class="eq-b">${u.llave&&ROL_TXT[u.rol]?`<button class="btn ghost" data-copiar="${esc(u.llave)}">Copiar link</button><button class="btn ghost" data-renovar="${esc(u.perfil)}" title="El link anterior deja de funcionar">Nuevo link</button>`:'<span class="tag">Sin link</span>'}</div></div>`).join(''):'<div class="carga">Cargando equipo…</div>'}</div>
+    <section class="nuevo-p"><h3>Crear perfil</h3>
+      <div class="campo"><label for="np-n">Nombre</label><input type="text" id="np-n" maxlength="40" placeholder="Ej. Sofía"></div>
+      <div class="campo"><label for="np-r">Qué puede hacer</label><select id="np-r"><option value="advisor">Advisor: lleva sus propias campañas</option><option value="presentacion">Solo ver y presentar</option><option value="admin">Jefa: ve a todas y administra el equipo</option></select></div>
+      <div class="campo" id="np-pl"><label for="np-p">Copiar las columnas de</label><select id="np-p">${hs.map(h=>`<option>${esc(h)}</option>`).join('')}</select></div>
+      <p class="nota">Para una advisor se crea su propia pestaña en la hoja, con las mismas columnas y listas que la que elijas, pero vacía.</p>
+      <div class="df" style="padding:12px 0 0;border:0"><button class="btn violet" id="np-go">Crear perfil</button></div></section></main>`;
+    enlazar();
+    document.querySelectorAll('[data-copiar]').forEach(b=>b.onclick=()=>copiar(linkPersonal(b.dataset.copiar)));
+    document.querySelectorAll('[data-renovar]').forEach(b=>b.onclick=async()=>{if(b.dataset.ok!=='1'){b.dataset.ok='1';b.textContent='¿Seguro? El anterior deja de servir';b.classList.add('danger');return}
+      b.disabled=true;try{const r=await llamar('nuevoLink',{objetivo:b.dataset.renovar});EQ_NUEVO=null;await cargarEquipo();pinta();copiar(linkPersonal(r.perfil.llave))}catch(e){toast(e.message,true);b.disabled=false}});
+    const rol=$('#np-r');const pl=()=>{$('#np-pl').hidden=rol.value!=='advisor'};rol.onchange=pl;pl();
+    $('#np-go').onclick=async e=>{const bt=e.currentTarget;const n=$('#np-n').value.trim();if(!n){toast('Escribe el nombre.',true);return}
+      bt.disabled=true;bt.textContent='Creando…';try{const r=await llamar('crearPerfil',{nombre:n,rol:rol.value,plantilla:$('#np-p').value});EQ_NUEVO=r.perfil;await cargarEquipo();try{await sincronizar();S.datos=construir()}catch(x){}pinta();toast('Perfil creado')}
+      catch(err){toast(err.message,true);bt.disabled=false;bt.textContent='Crear perfil'}};
+  };
+  pinta();if(!EQ){try{await cargarEquipo();if(S.advisor===EQUIPO)pinta()}catch(e){toast(e.message,true)}}}
+async function cargarEquipo(){EQ=await llamar('equipo')}
 
 /* ---------- edición ---------- */
 async function cambiar(id,campo,valor){const H=hojaMia();const r=H.filas.find(x=>x._id===id);const antes=r[campo];if(String(antes??'')===String(valor??''))return;r[campo]=valor;
@@ -341,7 +380,7 @@ async function toggleCheck(id,c,w){const H=hojaMia();const r=H.filas.find(x=>x._
   finally{delete ckPend[k]}}
 function abrirBind(id,w,H){const r=H.filas.find(x=>x._id===id);w.querySelectorAll('[data-ck]').forEach(b=>b.onclick=async()=>{if(b.disabled)return;b.disabled=true;const c=b.dataset.ck;await cambiar(id,c,!(r[c]===true));const box=b.closest('.grupo');const tmp=document.createElement('div');tmp.innerHTML=checklistHTML(H.filas.find(x=>x._id===id),H);box.replaceWith(tmp.firstElementChild);abrirBind(id,w,H)})}
 async function recargarHist(){S.datos=construir()}
-function enlazar(){const s=$('#salir');if(s)s.onclick=salir;document.querySelectorAll('[data-presentar]').forEach(b=>b.onclick=()=>presentar(b.dataset.presentar));const xb=$('#xls');if(xb)xb.onclick=()=>descargarExcel(xb);
+function enlazar(){const s=$('#salir');if(s)s.onclick=()=>salir();document.querySelectorAll('[data-presentar]').forEach(b=>b.onclick=()=>presentar(b.dataset.presentar));const xb=$('#xls');if(xb)xb.onclick=()=>descargarExcel(xb);
   document.querySelectorAll('[data-vista]').forEach(b=>b.onclick=()=>{S.vista=b.dataset.vista;render()});
   document.querySelectorAll('[data-adv]').forEach(b=>b.onclick=()=>{S.advisor=b.dataset.adv;render()});
   document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{S.filtro=b.dataset.f;S.lim=150;render()});
