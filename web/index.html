@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap" rel="stylesheet">
 <script src="config.js"></script>
-<link rel="stylesheet" href="estilo.css?v=3">
+<link rel="stylesheet" href="estilo.css?v=5">
 </head>
 <body>
 <div id="app"></div>
@@ -46,7 +46,7 @@ buscar:'<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',mas:'<path d=
 descargar:'<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',presentar:'<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M12 16v4M8 20h8"/>',
 historial:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>',lista:'<path d="M9 6h12M9 12h12M9 18h12M4 6h.01M4 12h.01M4 18h.01"/>',
 link:'<path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/>',cerrar:'<path d="M18 6 6 18M6 6l12 12"/>',
-check:'<path d="m5 12 5 5L20 7"/>',campana:'<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/>'};
+check:'<path d="m5 12 5 5L20 7"/>',nota:'<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 13h5"/>',campana:'<path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1zM16 8a5 5 0 0 1 0 8M19 5a9 9 0 0 1 0 14"/>'};
 const ic=(n,c)=>`<svg class="ic${c?' '+c:''}" viewBox="0 0 24 24" aria-hidden="true">${IC[n]||IC.campana}</svg>`;
 const IC_ETAPA={'Propuesta':'propuesta','En revisión':'revision','Cambios':'cambios','Activación':'activacion','Contratos':'contratos','Calendario':'calendario','Producción':'produccion','Reporte':'reporte','Finanzas':'finanzas','NPS':'nps'};
 const IC_CK={'Creación de comunidad':'comunidad','Contratos firmados':'contratos','Contenido reposteado':'repost','Solicitud de reporte':'solicitud','ODC enviada':'odc','Facturas recibidas':'facturas','Influencers pagados':'pagados','Campaña facturada':'facturada','Pago recibido':'pago'};
@@ -57,9 +57,49 @@ function etapasDe(H){return ((H&&H.listas&&H.listas.Status)||LIST.Status).filter
 function etapasHTML(r,H){const E=etapasDe(H);const i=E.indexOf(r.Status);if(INACTIVOS.includes(r.Status))return'';
   return `<div class="etapas" title="${i<0?'Sin status':'Etapa '+(i+1)+' de '+E.length+': '+esc(r.Status)}">${E.map((s,k)=>`<i class="${k<i?'ok':k===i?'aqui':''}"></i>`).join('')}</div>`}
 function ringHTML(A){if(!A.total)return'';const p=Math.round(A.ok/A.total*100);return `<span class="ring ${A.ok===A.total?'lleno':''}" style="--p:${p}" title="Checklist: ${A.ok} de ${A.total}"><b>${A.ok}/${A.total}</b></span>`}
+/* ---------- bitácora: notas con fecha, la más nueva arriba, en la columna Notas ---------- */
+function colBit(H){const e=(H&&H.encabezados)||[];return e.includes('Notas')?'Notas':e.includes('notas')?'notas':null}
+const RE_NOTA=/^\[(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}), ([^\]]+)\] ?(.*)$/;
+function notasDe(r,H){const c=colBit(H);const t=c&&r?String(r[c]==null?'':r[c]).trim():'';if(!t)return[];const out=[];let viejo=[];
+  const suelta=()=>{if(viejo.length){out.push({f:null,quien:'',t:viejo.join('\n')});viejo=[]}};
+  t.split('\n').forEach(l=>{const m=l.match(RE_NOTA);if(m){suelta();out.push({f:new Date(+m[3],m[2]-1,+m[1],+m[4],+m[5]),quien:m[6],t:m[7]})}else if(l.trim())viejo.push(l.trim());else suelta()});suelta();return out}
+function hace(f){const ms=Date.now()-f,d=Math.floor(ms/864e5);if(d<1){const h=Math.floor(ms/36e5);return h<1?'hace un momento':'hace '+h+(h===1?' hora':' horas')}return d===1?'ayer':'hace '+d+' días'}
+function fmtNota(f){return f.toLocaleDateString('es-GT',{day:'numeric',month:'short'})+', '+f.toLocaleTimeString('es-GT',{hour:'2-digit',minute:'2-digit'})}
+/** Última nota de la campaña, para la lista. El color avisa si la campaña lleva días sin seguimiento. */
+function ultimaHTML(r,H){const N=notasDe(r,H);if(!N.length)return'';const n=N[0];const d=n.f?(Date.now()-n.f)/864e5:null;const cl=d==null?'':d>7?'vieja':d>3?'media':'';
+  return `<p class="ult ${cl}" title="${n.f?'Última nota, '+esc(fmtNota(n.f)):'Nota de antes del tablero'}">${ic('nota')}<span>${n.f?`<b>${esc(hace(n.f))}</b> `:''}${esc(n.t)}</span></p>`}
+function tlHTML(N){return N.map(n=>`<li><time>${n.f?esc(fmtNota(n.f))+' ('+esc(hace(n.f))+')':'Antes del tablero'}</time>${n.quien?`<b>${esc(n.quien)}</b>`:''}<p>${esc(n.t).replace(/\n/g,'<br>')}</p></li>`).join('')}
+function bitacoraHTML(r,H,ro){const c=colBit(H);if(!c)return'';const N=notasDe(r,H);
+  return `<div class="grupo bita" data-bita><h3>${ic('nota')}Bitácora <span class="ckn bn">${N.length?N.length+(N.length===1?' nota':' notas'):''}</span></h3>
+  ${ro?'':`<form class="nota-f" data-nota-form><input type="text" maxlength="1000" placeholder="¿Qué pasó hoy? Ej. el cliente aprobó el guion" aria-label="Nueva nota"><button class="btn violet" type="submit">${ic('mas')}Agregar</button></form>`}
+  <ol class="tl">${tlHTML(N)||'<li class="vacia"><p>Todavía no hay notas. Escribe la primera arriba.</p></li>'}</ol></div>`}
+function enlazarNota(id,w){const f=w.querySelector('[data-nota-form]');if(!f)return;const inp=f.querySelector('input'),bt=f.querySelector('button');
+  f.onsubmit=async e=>{e.preventDefault();const t=inp.value.trim();if(!t){inp.focus();return}bt.disabled=true;inp.disabled=true;
+    try{const r=await api('nota',{id,texto:t});const H=hojaMia();const row=H.filas.find(x=>x._id===id);const c=colBit(H);if(row&&c&&r.campana)row[c]=r.campana.v[c];
+      const tmp=document.createElement('div');tmp.innerHTML=bitacoraHTML(row,H);w.querySelector('[data-bita]').replaceWith(tmp.firstElementChild);enlazarNota(id,w);w.querySelector('[data-nota-form] input').focus();toast('Nota guardada')}
+    catch(err){toast(err.message,true);bt.disabled=false;inp.disabled=false}}}
+/* ---------- por ordenar: lo que falta o está escrito distinto, para que cada una lo arregle ---------- */
+const PEND=/^(pendiente|por definir|n\/?a|na|-+|tbd)$/i;
+function problemas(r,H){const P=[];const L=(H&&H.listas)||{};
+  if(!r.Status)P.push(['status','Falta el status']);
+  if(!r.Puntaje)P.push(['puntaje','Falta el puntaje']);
+  if(!r.Marca)P.push(['marca','Falta la marca']);
+  Object.keys(L).forEach(c=>{const v=r[c];if(v!=null&&v!==''&&!L[c].includes(String(v)))P.push([c.toLowerCase(),`${c}: "${v}" no es una de las opciones`])});
+  ((H&&H.encabezados)||[]).filter(c=>/fecha/i.test(c)).forEach(c=>{const v=r[c];if(v!=null&&v!==''&&!/^\d{4}-\d{2}-\d{2}$/.test(String(v))&&!PEND.test(String(v).trim()))P.push(['fecha',`${c} está escrita como texto: "${v}"`,c])});
+  return P}
+const porOrdenar=(r,H)=>!INACTIVOS.includes(r.Status)&&problemas(r,H).length>0;
+function faltaHTML(r,H){const P=problemas(r,H);if(!P.length||INACTIVOS.includes(r.Status))return'';return `<em class="po">${ic('alerta')}Por ordenar: ${esc([...new Set(P.map(p=>p[0]))].join(', '))}</em>`}
+function aIso(d,m,y){y=y?(+y<100?2000+ +y:+y):new Date().getFullYear();const f=new Date(y,m-1,d);if(f.getMonth()!==m-1||f.getDate()!==+d)return null;return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`}
+function btnFx(o,txt){return `<button type="button" class="rest fx" data-fx="${esc(JSON.stringify(o))}">${ic('check')}${esc(txt)}</button>`}
+/** Si la fecha estaba escrita como texto, propone la fecha que quiso decir (con un clic). */
+function sugerencia(campo,v){const s=String(v).trim();
+  let m=s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s*(?:al|a|-|–)\s*(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/i);
+  if(m){const a=aIso(m[1],m[2],m[3]),b=aIso(m[4],m[5],m[6]);if(a&&b)return campo==='Fecha de activación'?btnFx({'Fecha de activación':a,'Fecha de finalización':b},`Usar ${fmtD(a)} como activación y ${fmtD(b)} como finalización`):btnFx({[campo]:a},'Usar '+fmtD(a))}
+  m=s.match(/^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?$/);if(m){const a=aIso(m[1],m[2],m[3]);return a?btnFx({[campo]:a},'Usar '+fmtD(a)):'<small class="mal">Esa fecha no existe. Elígela en el calendario.</small>'}
+  return''}
 function checklistHTML(r,H,ro){const A=avance(r,H);if(!A.total)return'';
   return `<div class="grupo" data-cklist><h3>${ic('check')}Checklist <span class="ckn">${A.ok} de ${A.total}</span></h3><div class="ckbar"><i style="width:${A.total?A.ok/A.total*100:0}%"></i></div>${checks(H).map(([p,cs])=>`<div class="ckp"><span>${esc(p)}</span><div class="cks">${cs.map(c=>`<button type="button" class="ck ${r[c]===true?'on':''} ${c===A.sig?'sig':''}" data-ck="${esc(c)}" aria-pressed="${r[c]===true}" ${ro?'disabled':''}><span class="bolita">${ic(r[c]===true?'check':IC_CK[c])}</span>${esc(c)}${c===A.sig?'<em>Sigue</em>':''}</button>`).join('')}</div></div>`).join('')}</div>`}
-const GRUPOS=[['Campaña',['Puntaje','Status','Agencia','Marca','Campaña','Propuesta','Fecha último envio de propuesta','Link propuesta final','Link Asana','link de asana','notas','Errores operativos']],
+const GRUPOS=[['Campaña',['Puntaje','Status','Agencia','Marca','Campaña','Propuesta','Fecha último envio de propuesta','Link propuesta final','Link Asana','Errores operativos']],
 ['Activación',['Activación','Fecha de activación','Fecha de finalización','Creación de comunidad','Contratos firmados','Link contratos','Status calendario','Link calendario']],
 ['Producción',['Status de producción','Notas','Link contenidos','Contenido reposteado']],
 ['Reporte y pago',['Solicitud de reporte','Dashboard','Fecha envio reporte','ODC enviada','Facturas recibidas','Influencers pagados','Link documentación de pago','Campaña facturada','Pago recibido']]];
@@ -86,6 +126,7 @@ async function histCampana(id){try{return (await llamar('histCampana',{id})).his
 function aplicar(r){if(r.campana)CAMP[r.campana.id]=r.campana;if(r.hist)HIST=[r.hist].concat(HIST)}
 async function api(action,p){p=p||{};
   if(action==='datos'){await sincronizar();return construir()}
+  if(action==='nota'){const r=await llamar('nota',{id:p.id,texto:p.texto});aplicar(r);return r}
   if(action==='cambiar'){const r=await llamar('cambiar',{id:p.id,campo:p.campo,valor:p.valor});aplicar(r);return{guardado:true}}
   if(action==='agregar'){const r=await llamar('agregar',{valores:p.valores});aplicar(r);return{id:r.campana.id}}
   if(action==='transferir'){const r=await llamar('transferir',{id:p.id,dest:p.dest});delete CAMP[p.id];if(S.sesion.rol!=='advisor')CAMP[r.campana.id]=r.campana;if(r.hist)HIST=[r.hist].concat(HIST);return{ok:true}}
@@ -155,7 +196,7 @@ function slideC(r,H){const A=avance(r,H);const hs=(S.datos.historial||[]).filter
     <div class="ps-st"><span class="tag big">${esc(r.Status||'Sin status')}</span>${r['Status de producción']?`<span class="tag">Producción: ${esc(r['Status de producción'])}</span>`:''}${r['Status calendario']?`<span class="tag">Calendario: ${esc(r['Status calendario'])}</span>`:''}</div>${etapasHTML(r,H)}
     ${A.total?`<div class="ps-ck"><div class="ckbar"><i style="width:${A.ok/A.total*100}%"></i></div><p>Checklist ${A.ok} de ${A.total}${A.sig?`, sigue: ${esc(A.sig)}`:', completo'}</p></div>`:''}
     ${fechas?`<div class="ps-f">${fechas}</div>`:''}</div>
-    <aside class="ps-h"><h3>Últimos movimientos</h3>${hs.length?hs.map(histHTML).join(''):'<p class="nota">Sin movimientos registrados.</p>'}</aside></div>`}
+    <aside class="ps-h">${(()=>{const N=notasDe(r,H).slice(0,3);return N.length?`<h3>Bitácora</h3><ol class="tl">${tlHTML(N)}</ol>`:''})()}<h3>Últimos movimientos</h3>${hs.length?hs.map(histHTML).join(''):'<p class="nota">Sin movimientos registrados.</p>'}</aside></div>`}
 function slideRes(resto,n){const L=(LIST.Status).filter(s=>!INACTIVOS.includes(s));const g=L.map(s=>[s,resto.filter(r=>r.Status===s)]).filter(x=>x[1].length);const sin=resto.filter(r=>!r.Status);if(sin.length)g.push(['Sin status',sin]);
   return `<div class="pr"><h1>${n?'Además, sin movimiento esta semana':'Sin movimientos esta semana'}</h1><p class="sub">${resto.length} ${resto.length===1?'campaña activa':'campañas activas'} más.</p><div class="pr-g">${g.map(([s,rs])=>`<section><h3>${esc(s)} <span>${rs.length}</span></h3>${rs.map(r=>`<div class="pr-i">${ptHTML(r.Puntaje)}<span>${esc([r.Marca,r['Campaña']].filter(Boolean).join(', '))}</span></div>`).join('')}</section>`).join('')||'<p class="nota">No hay más campañas activas.</p>'}</div></div>`}
 
@@ -169,12 +210,12 @@ function conteos(H){const L=(H.listas.Status||LIST.Status);const c={};L.forEach(
 /** La órbita: cada etapa del pipeline con cuántas campañas hay ahí. Tocar una etapa filtra la lista. */
 function orbitaHTML(H,soloVer){const c=conteos(H);const E=etapasDe(H);
   return `<section class="orb visor" aria-label="Campañas por etapa"><div class="orb-t" style="--n:${E.length}" role="group" aria-label="Filtrar por etapa">${E.map(s=>`<button class="nodo ${c[s]?'con':''}" ${soloVer?'tabindex="-1"':`data-f="${esc(s)}"`} aria-pressed="${S.filtro===s}" title="${c[s]||0} en ${esc(s)}"><span class="bola">${ic(IC_ETAPA[s])}${c[s]?`<b class="num">${c[s]}</b>`:''}</span><span>${esc(s)}</span></button>`).join('')}</div></section>`}
-function chipsHTML(H){const c=conteos(H);const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status)).length;const cer=INACTIVOS.reduce((n,s)=>n+(c[s]||0),0);const sin=c['Sin status']||0;
+function chipsHTML(H){const c=conteos(H);const act=H.filas.filter(r=>!INACTIVOS.includes(r.Status)).length;const cer=INACTIVOS.reduce((n,s)=>n+(c[s]||0),0);const po=H.filas.filter(r=>porOrdenar(r,H)).length;
   const ch=(f,n,txt,cl)=>`<button class="chip ${cl||''}" data-f="${esc(f)}" aria-pressed="${S.filtro===f}"><b>${n}</b>${txt}</button>`;
-  return `<div class="chips" role="group" aria-label="Filtros">${ch('Activas',act,'activas')}${sin?ch('Sin status',sin,'sin status','alerta'):''}${ch('Cerradas',cer,'cerradas o pausadas')}${ch('Todas',H.filas.length,'todas')}</div>`}
-function filtradas(H){const q=S.q.trim().toLowerCase();return H.filas.filter(r=>(S.filtro==='Todas'||(S.filtro==='Activas'?!INACTIVOS.includes(r.Status):S.filtro==='Cerradas'?INACTIVOS.includes(r.Status):S.filtro==='Sin status'?!r.Status:r.Status===S.filtro))&&(!q||[r.Marca,r['Campaña'],r.Agencia].join(' ').toLowerCase().includes(q))).sort((a,b)=>({C:3,B:2,A:1,N:0}[letra(b.Puntaje)]-{C:3,B:2,A:1,N:0}[letra(a.Puntaje)])||String(a.Marca||'').localeCompare(String(b.Marca||'')))}
+  return `<div class="chips" role="group" aria-label="Filtros">${ch('Activas',act,'activas')}${po?ch('Por ordenar',po,'por ordenar','alerta'):''}${ch('Cerradas',cer,'cerradas o pausadas')}${ch('Todas',H.filas.length,'todas')}</div>`}
+function filtradas(H){const q=S.q.trim().toLowerCase();return H.filas.filter(r=>(S.filtro==='Todas'||(S.filtro==='Activas'?!INACTIVOS.includes(r.Status):S.filtro==='Cerradas'?INACTIVOS.includes(r.Status):S.filtro==='Por ordenar'?porOrdenar(r,H):r.Status===S.filtro))&&(!q||[r.Marca,r['Campaña'],r.Agencia].join(' ').toLowerCase().includes(q))).sort((a,b)=>({C:3,B:2,A:1,N:0}[letra(b.Puntaje)]-{C:3,B:2,A:1,N:0}[letra(a.Puntaje)])||String(a.Marca||'').localeCompare(String(b.Marca||'')))}
 function filaHTML(r,ro){const L=hojaMia().listas.Status||LIST.Status;const H=ro?(S.datos.hojas[S.advisor]||hojaMia()):hojaMia();
-  return `<div class="fila">${ptHTML(r.Puntaje)}<div class="nm" ${ro?'':`data-abrir="${esc(r._id)}" role="button" tabindex="0"`}><b>${esc(r.Marca||'Sin marca')}${r['Campaña']?', '+esc(r['Campaña']):''}</b><small>${esc(r.Agencia||'Sin agencia')}</small>${etapasHTML(r,H)}${r._rec&&Date.now()-new Date(r._rec.fecha)<14*864e5?`<em class="rec">Recibida de ${esc(r._rec.de)}</em>`:''}</div>
+  return `<div class="fila">${ptHTML(r.Puntaje)}<div class="nm" ${ro?'':`data-abrir="${esc(r._id)}" role="button" tabindex="0"`}><b>${esc(r.Marca||'Sin marca')}${r['Campaña']?', '+esc(r['Campaña']):''}</b><small>${esc(r.Agencia||'Sin agencia')}</small>${ultimaHTML(r,H)}${faltaHTML(r,H)}${etapasHTML(r,H)}${r._rec&&Date.now()-new Date(r._rec.fecha)<14*864e5?`<em class="rec">Recibida de ${esc(r._rec.de)}</em>`:''}</div>
   ${ringHTML(avance(r,H))}${ro?`<span class="tag">${esc(r.Status||'Sin status')}</span>`:`<select class="st" data-st="${esc(r._id)}" aria-label="Status de ${esc(r.Marca||'')}">${(L.includes(r.Status)?L:[r.Status||''].concat(L)).map(s=>`<option ${s===r.Status?'selected':''}>${esc(s)}</option>`).join('')}</select>`}</div>`}
 function render(){if(S.sesion.rol!=='advisor')return renderPres();
   const H=hojaMia();let main='';
@@ -228,11 +269,11 @@ async function cambiar(id,campo,valor){const H=hojaMia();const r=H.filas.find(x=
   try{await api('cambiar',{hoja:S.sesion.hoja,id,campo,valor});toast('Guardado')}
   catch(e){r[campo]=antes;toast(e.message,true)}
 }
-function tipo(campo,v,H){if((H.listas||{})[campo])return'lista';if(BOOL.includes(campo)||typeof v==='boolean')return'bool';if(/fecha/i.test(campo)&&(!v||/^\d{4}-\d{2}-\d{2}$/.test(v)))return'fecha';if(/link|dashboard/i.test(campo))return'link';if(/nota/i.test(campo))return'texto';return'linea'}
+function tipo(campo,v,H){if((H.listas||{})[campo])return'lista';if(BOOL.includes(campo)||typeof v==='boolean')return'bool';if(/fecha/i.test(campo))return'fecha';if(/link|dashboard/i.test(campo))return'link';if(/nota/i.test(campo))return'texto';return'linea'}
 function campoHTML(campo,v,H,id){const t=tipo(campo,v,H);const n=`data-c="${esc(campo)}"`;let inp;
   if(t==='lista'){const L=H.listas[campo];inp=`<select ${n}><option value=""></option>${(v&&!L.includes(v)?[v].concat(L):L).map(o=>`<option ${o===v?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
   else if(t==='bool')inp=`<input type="checkbox" ${n} ${v===true?'checked':''}>`;
-  else if(t==='fecha')inp=`<input type="date" ${n} value="${esc(v||'')}">`;
+  else if(t==='fecha'){const iso=/^\d{4}-\d{2}-\d{2}$/.test(String(v||''));inp=`<div class="fe"><input type="date" ${n} value="${iso?esc(v):''}">${!iso&&v!=null&&v!==''?`<small>${PEND.test(String(v).trim())?'Marcada como pendiente':'Estaba escrito: "'+esc(v)+'"'}</small>${PEND.test(String(v).trim())?'':sugerencia(campo,v)}`:''}</div>`}
   else if(t==='link')inp=`<div class="lnk"><input type="url" ${n} value="${esc(v||'')}" placeholder="https://">${v&&/^https?:/.test(v)?`<a href="${esc(v)}" target="_blank" rel="noopener" title="Abrir enlace">↗</a>`:''}</div>`;
   else if(t==='texto')inp=`<textarea ${n}>${esc(v||'')}</textarea>`;
   else inp=`<input type="text" ${n} value="${esc(v??'')}">`;
@@ -242,24 +283,27 @@ function abrir(id){const H=hojaMia();const r=id?H.filas.find(x=>x._id===id):null
   const otros=enc.filter(c=>!usados.has(c)&&c!=='Column 9');if(otros.length)grupos.push(['Otros',otros]);
   const base=nuevo?['Puntaje','Status','Agencia','Marca','Campaña','Propuesta']:null;
   const cuerpo=nuevo?`<div class="grupo"><h3>Datos principales</h3>${base.filter(c=>enc.includes(c)).map(c=>campoHTML(c,c==='Status'?'Propuesta':'',H)).join('')}</div><p class="nota">Lo demás lo completas después, desde la campaña.</p>`:
-    checklistHTML(r,H)+grupos.map(([g,cs])=>[g,cs.filter(c=>!checks(H).flatMap(x=>x[1]).includes(c))]).filter(x=>x[1].length).map(([g,cs])=>`<div class="grupo"><h3>${esc(g)}</h3>${cs.map(c=>campoHTML(c,r[c],H)).join('')}</div>`).join('')+
-    `<div class="grupo"><h3>Historial de esta campaña</h3>${(S.datos.historial||[]).filter(h=>h.id===id).map((h,i)=>histHTML(h).replace(/<\/div><\/div>$/,h.campo!=='Nueva campaña'?`<button class="rest" data-rest="${i}">Restaurar ${esc(vis(h.antes)===''?'vacío':vis(h.antes))}</button></div></div>`:'</div></div>')).join('')||'<p class="nota">Sin cambios todavía.</p>'}</div>`+traspasoHTML();
-  const w=document.createElement('div');w.innerHTML=`<div class="velo" data-cerrar></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${nuevo?'Nueva campaña':'Campaña'}"><div class="dh">${nuevo?'':ptHTML(r.Puntaje)}<div><h2>${nuevo?'Nueva campaña':esc(r.Marca||'Campaña')}</h2><small>${nuevo?'Se agrega a tu hoja':esc([r['Campaña'],r.Agencia].filter(Boolean).join(' · '))}</small></div><button class="x" data-cerrar aria-label="Cerrar">${ic('cerrar')}</button></div>${nuevo?'':(()=>{const E=etapasDe(H),i=E.indexOf(r.Status);return `<div class="d-et"><p>${INACTIVOS.includes(r.Status)?`Campaña <b>${esc(r.Status)}</b>`:i<0?'Todavía <b>sin status</b>: elígelo abajo':`Etapa <b>${i+1} de ${E.length}</b>: ${esc(r.Status)}`}</p>${etapasHTML(r,H)}</div>`})()}<div class="db">${cuerpo}</div>${nuevo?'<div class="df"><button class="btn ghost" data-cerrar>Cancelar</button><button class="btn violet" id="crear">Agregar campaña</button></div>':''}</aside>`;
+    bitacoraHTML(r,H)+checklistHTML(r,H)+grupos.map(([g,cs])=>[g,cs.filter(c=>!checks(H).flatMap(x=>x[1]).includes(c)&&c!==colBit(H))]).filter(x=>x[1].length).map(([g,cs])=>`<div class="grupo"><h3>${esc(g)}</h3>${cs.map(c=>campoHTML(c,r[c],H)).join('')}</div>`).join('')+
+    `<div class="grupo"><h3>Historial de esta campaña</h3>${(S.datos.historial||[]).filter(h=>h.id===id).map((h,i)=>histHTML(h).replace(/<\/div><\/div>$/,restaurable(h)?`<button class="rest" data-rest="${i}">Restaurar ${esc(vis(h.antes)===''?'vacío':vis(h.antes))}</button></div></div>`:'</div></div>')).join('')||'<p class="nota">Sin cambios todavía.</p>'}</div>`+traspasoHTML();
+  const w=document.createElement('div');w.innerHTML=`<div class="velo" data-cerrar></div><aside class="drawer" role="dialog" aria-modal="true" aria-label="${nuevo?'Nueva campaña':'Campaña'}"><div class="dh">${nuevo?'':ptHTML(r.Puntaje)}<div><h2>${nuevo?'Nueva campaña':esc(r.Marca||'Campaña')}</h2><small>${nuevo?'Se agrega a tu hoja':esc([r['Campaña'],r.Agencia].filter(Boolean).join(' · '))}</small></div><button class="x" data-cerrar aria-label="Cerrar">${ic('cerrar')}</button></div>${nuevo?'':(()=>{const E=etapasDe(H),i=E.indexOf(r.Status);return `<div class="d-et"><p>${INACTIVOS.includes(r.Status)?`Campaña <b>${esc(r.Status)}</b>`:i<0?'Todavía <b>sin status</b>: elígelo abajo':`Etapa <b>${i+1} de ${E.length}</b>: ${esc(r.Status)}`}</p>${etapasHTML(r,H)}</div>`})()}${nuevo||INACTIVOS.includes(r.Status)?'':(()=>{const P=problemas(r,H);return P.length?`<div class="po-b">${ic('alerta')}<div><b>Por ordenar</b><ul>${P.map(p=>`<li>${esc(p[1])}${p[2]?' '+sugerencia(p[2],r[p[2]]):''}</li>`).join('')}</ul></div></div>`:''})()}<div class="db">${cuerpo}</div>${nuevo?'<div class="df"><button class="btn ghost" data-cerrar>Cancelar</button><button class="btn violet" id="crear">Agregar campaña</button></div>':''}</aside>`;
   document.body.appendChild(w);S.abierta=w;const cerrar=async()=>{const a=document.activeElement;if(a&&a.dataset&&a.dataset.c&&w.contains(a)){a.blur();await new Promise(r=>setTimeout(r,80))}w.remove();S.abierta=null;render()};
   w.querySelectorAll('[data-cerrar]').forEach(b=>b.onclick=cerrar);document.addEventListener('keydown',function k(e){if(e.key==='Escape'&&S.abierta===w){document.removeEventListener('keydown',k);cerrar()}});
   if(nuevo){w.querySelector('#crear').onclick=async e=>{const bt=e.currentTarget;if(bt.disabled)return;const vals={};w.querySelectorAll('[data-c]').forEach(el=>{vals[el.dataset.c]=el.type==='checkbox'?el.checked:el.value});if(!vals.Marca&&!vals['Campaña']){toast('Escribe al menos la marca o la campaña.',true);return}
       bt.disabled=true;bt.textContent='Agregando…';try{const res=await api('agregar',{hoja:S.sesion.hoja,valores:vals});H.filas.push(Object.assign({_id:res.id},vals));await recargarHist();toast('Campaña agregada');cerrar()}catch(e){toast(e.message,true);bt.disabled=false;bt.textContent='Agregar campaña'}};return}
   let hsC=(S.datos.historial||[]).filter(h=>h.id===id);
-  histCampana(id).then(L=>{if(!w.isConnected||!L.length)return;hsC=L;const g=[...w.querySelectorAll('.grupo h3')].find(h=>h.textContent==='Historial de esta campaña');if(!g)return;const box=g.parentElement;box.innerHTML='<h3>Historial de esta campaña</h3>'+L.map((h,i)=>histHTML(h).replace(/<\/div><\/div>$/,h.campo!=='Nueva campaña'&&h.campo!=='Traspaso'&&S.sesion.rol==='advisor'?`<button class="rest" data-rest="${i}">Restaurar ${esc(vis(h.antes)===''?'vacío':vis(h.antes))}</button></div></div>`:'</div></div>')).join('');box.querySelectorAll('[data-rest]').forEach(b=>b.onclick=async()=>{const h=hsC[+b.dataset.rest];b.disabled=true;await cambiar(id,h.campo,h.antes===undefined?'':h.antes);cerrar();setTimeout(()=>abrir(id),120)})});
+  histCampana(id).then(L=>{if(!w.isConnected||!L.length)return;hsC=L;const g=[...w.querySelectorAll('.grupo h3')].find(h=>h.textContent==='Historial de esta campaña');if(!g)return;const box=g.parentElement;box.innerHTML='<h3>Historial de esta campaña</h3>'+L.map((h,i)=>histHTML(h).replace(/<\/div><\/div>$/,restaurable(h)&&S.sesion.rol==='advisor'?`<button class="rest" data-rest="${i}">Restaurar ${esc(vis(h.antes)===''?'vacío':vis(h.antes))}</button></div></div>`:'</div></div>')).join('');box.querySelectorAll('[data-rest]').forEach(b=>b.onclick=async()=>{const h=hsC[+b.dataset.rest];b.disabled=true;await cambiar(id,h.campo,h.antes===undefined?'':h.antes);cerrar();setTimeout(()=>abrir(id),120)})});
   w.querySelectorAll('[data-rest]').forEach(b=>b.onclick=async()=>{const h=hsC[+b.dataset.rest];b.disabled=true;await cambiar(id,h.campo,h.antes===undefined?'':h.antes);cerrar();setTimeout(()=>abrir(id),120)});
   w.addEventListener('click',e=>{const b=e.target.closest('[data-ck]');if(b&&!b.disabled)toggleCheck(id,b.dataset.ck,w)});
   w.addEventListener('click',async e=>{if(e.target.closest('[data-tr-open]')){const c=w.querySelector('.tr-confirm');c.hidden=false;c.querySelector('.tr-n').textContent=w.querySelector('#tr-dest').value;c.scrollIntoView({block:'nearest'})}
     if(e.target.closest('[data-tr-no]'))w.querySelector('.tr-confirm').hidden=true;
     const g=e.target.closest('[data-tr-go]');if(g&&!g.disabled){g.disabled=true;g.textContent='Pasando…';const dest=w.querySelector('#tr-dest').value;
       try{await api('transferir',{id,dest});toast('Campaña pasada a '+dest);w.remove();S.abierta=null;S.datos=construir();render()}catch(err){toast(err.message,true);g.disabled=false;g.textContent='Sí, pasarla'}}});
+  enlazarNota(id,w);
+  w.addEventListener('click',async e=>{const b=e.target.closest('[data-fx]');if(!b||b.disabled)return;b.disabled=true;const o=JSON.parse(b.dataset.fx);for(const k of Object.keys(o))await cambiar(id,k,o[k]);cerrar();setTimeout(()=>abrir(id),120)});
   w.querySelectorAll('[data-c]').forEach(el=>{const ev=el.tagName==='SELECT'||el.type==='checkbox'||el.type==='date'?'change':'blur';el.addEventListener(ev,async()=>{await cambiar(id,el.dataset.c,el.type==='checkbox'?el.checked:el.value)})});
 }
 const ckPend={};
+function restaurable(h){return !['Nueva campaña','Traspaso','Nota','Notas'].includes(h.campo)&&(hojaMia().encabezados||[]).includes(h.campo)}
 function traspasoHTML(){const otras=Object.keys(CFG.hojas).filter(n=>n!==S.sesion.hoja);if(!otras.length||S.sesion.rol!=='advisor')return'';
   return `<div class="grupo tras"><h3>Pasar a otra advisor</h3><p class="nota" style="margin-top:0">Si ya no llevas esta campaña, pásala a otra advisor. Se lleva todos sus datos y su historial.</p>
   <div class="tr-row"><select id="tr-dest" aria-label="Advisor que la recibe">${otras.map(n=>`<option>${esc(n)}</option>`).join('')}</select><button class="btn ghost" data-tr-open>Pasar campaña</button></div>

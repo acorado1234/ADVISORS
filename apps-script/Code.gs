@@ -35,6 +35,7 @@ function rutear(p) {
     case 'datos': return datos(u);
     case 'histCampana': return { historial: histCampana(u, p.id) };
     case 'cambiar': return conLock(() => cambiar(u, p.id, p.campo, p.valor));
+    case 'nota': return conLock(() => nota(u, p.id, p.texto));
     case 'agregar': return conLock(() => agregar(u, p.valores || {}));
     case 'transferir': return conLock(() => transferir(u, p.id, p.dest));
     default: throw new Error('Acción no reconocida.');
@@ -122,30 +123,61 @@ function nuevoLink(u, perfil) {
   return { perfil: { perfil: x.perfil, hoja: x.hoja, rol: x.rol, llave: llave } };
 }
 
+/* ---------- modelo estándar de campaña ----------
+ * Cada advisor arma su pestaña a su manera: columnas con otro nombre, en otro orden, o que no tiene.
+ * El tablero trabaja con UN solo modelo para todas (CAMPOS) y aquí se traduce cada pestaña a ese modelo:
+ *  - los nombres se comparan sin importar mayúsculas, tildes ni espacios ("notas" = "Notas");
+ *  - ALIAS cubre nombres distintos para lo mismo ("link de asana" = "Link Asana");
+ *  - si a una pestaña le falta un campo, se crea esa columna al final la primera vez que alguien lo llena;
+ *  - si una pestaña tiene dos columnas para lo mismo (Cintia: "notas" y "Notas"), se leen las dos
+ *    y se escribe en la principal (la que se llama exactamente igual que el campo).
+ * Nunca se borra, se mueve ni se renombra una columna de nadie.
+ */
+const CAMPOS = ['Puntaje', 'Errores operativos', 'Status', 'Agencia', 'Marca', 'Campaña', 'Propuesta', 'Fecha último envio de propuesta', 'Link propuesta final', 'Link Asana',
+  'Activación', 'Fecha de activación', 'Fecha de finalización', 'Creación de comunidad', 'Contratos firmados', 'Link contratos', 'Status calendario', 'Link calendario',
+  'Status de producción', 'Notas', 'Link contenidos', 'Contenido reposteado', 'Solicitud de reporte', 'Dashboard', 'Fecha envio reporte',
+  'ODC enviada', 'Facturas recibidas', 'Influencers pagados', 'Link documentación de pago', 'Campaña facturada', 'Pago recibido'];
+const ALIAS = { 'link de asana': 'Link Asana', 'asana': 'Link Asana', 'nota': 'Notas', 'comentarios': 'Notas', 'link de calendario': 'Link calendario', 'fecha de envio de reporte': 'Fecha envio reporte', 'link de propuesta final': 'Link propuesta final' };
+const BOOLS = ['Creación de comunidad', 'Contratos firmados', 'Contenido reposteado', 'Solicitud de reporte', 'ODC enviada', 'Facturas recibidas', 'Influencers pagados', 'Campaña facturada', 'Pago recibido'];
+const nz = t => String(t == null ? '' : t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+const CANON = {}; CAMPOS.forEach(c => { CANON[nz(c)] = c; }); Object.keys(ALIAS).forEach(a => { CANON[nz(a)] = ALIAS[a]; });
+function canonDe(nombre, i) { if (i === 0 && (nombre === '' || nombre === '0')) return 'Puntaje'; return CANON[nz(nombre)] || null; }
+
 /* ---------- lectura ---------- */
 function encab(sh) {
   const last = Math.max(sh.getLastColumn(), 1); let h = sh.getRange(1, 1, 1, last).getValues()[0].map((v, i) => { const t = String(v === null ? '' : v).trim(); return (i === 0 && (t === '' || t === '0')) ? 'Puntaje' : t; });
   if (h.indexOf(IDC) < 0) { sh.getRange(1, last + 1).setValue(IDC); sh.hideColumns(last + 1); h.push(IDC); }
   return h;
 }
-function vacia(r, h) { return CLAVES.every(k => { const i = h.indexOf(k); return i < 0 || r[i] === '' || r[i] === null; }); }
-function limpiar(v) { return v instanceof Date ? Utilities.formatDate(v, ZONA(), 'yyyy-MM-dd') : v; }
+/** Columnas de cada campo en la pestaña: { campo: [col, ...] } (base 0), la principal primero. */
+function mapa(h) {
+  const m = {};
+  h.forEach((nombre, i) => { if (!nombre || nombre === IDC) return; const c = canonDe(nombre, i) || nombre; (m[c] = m[c] || []).push(i); });
+  Object.keys(m).forEach(c => { if (m[c].length > 1) m[c].sort((a, b) => ((h[b] === c) - (h[a] === c)) || a - b); });
+  return m;
+}
+function limpiar(v) { return v instanceof Date ? Utilities.formatDate(v, ZONA(), 'yyyy-MM-dd') : (typeof v === 'string' ? v.trim() : v); }
+function lleno(x) { return x !== '' && x !== null && x !== undefined && !(typeof x === 'string' && !x.trim()); }
+function vacia(r, m) { return CLAVES.every(k => !(m[k] || []).some(i => lleno(r[i]))); }
+/** Valor de un campo; si la pestaña tiene dos columnas para él, se unen (separadas por una línea en blanco). */
+function valorDe(r, cols) { const xs = cols.map(i => limpiar(r[i])).filter(lleno); if (!xs.length) return undefined; if (xs.length === 1 || typeof xs[0] !== 'string') return xs[0]; return xs.join('\n\n'); }
 function leer(nombre) {
   const sh = SpreadsheetApp.getActive().getSheetByName(nombre); if (!sh) throw new Error('No encuentro la hoja ' + nombre + '.');
-  const h = encab(sh), idc = h.indexOf(IDC), n = Math.max(sh.getLastRow() - 1, 0);
+  const h = encab(sh), m = mapa(h), idc = h.indexOf(IDC), n = Math.max(sh.getLastRow() - 1, 0);
   const vals = n ? sh.getRange(2, 1, n, h.length).getValues() : [];
   const filas = [];
   vals.forEach((r, k) => {
-    if (vacia(r, h)) return;
+    if (vacia(r, m)) return;
     if (!r[idc]) { r[idc] = nombre.slice(0, 3).toLowerCase() + Utilities.getUuid().slice(0, 8); sh.getRange(k + 2, idc + 1).setValue(r[idc]); }
-    const v = {}; h.forEach((name, i) => { if (name && name !== IDC && r[i] !== '' && r[i] !== null) v[name] = limpiar(r[i]); });
+    const v = {}; Object.keys(m).forEach(c => { const x = valorDe(r, m[c]); if (x !== undefined) v[c] = x; });
     filas.push({ id: String(r[idc]), hoja: nombre, fila: k + 2, v: v });
   });
-  const listas = {};
-  if (n) h.forEach((name, i) => { if (!name || name === IDC) return; const dv = sh.getRange(2, i + 1).getDataValidation();
-    if (dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) listas[name] = dv.getCriteriaValues()[0].map(x => String(x).trim()); });
-  Object.keys(LISTAS_STD).forEach(k => { if (!listas[k] && h.indexOf(k) >= 0) listas[k] = LISTAS_STD[k]; });
-  return { sh, h, filas, cfg: { encabezados: h.filter(x => x !== IDC), listas } };
+  // Las listas son las mismas para todas (LISTAS_STD). Solo una columna propia, fuera del modelo, usa su propia lista.
+  const listas = {}; Object.keys(LISTAS_STD).forEach(k => { listas[k] = LISTAS_STD[k]; });
+  const extras = Object.keys(m).filter(c => CAMPOS.indexOf(c) < 0);
+  if (n) extras.forEach(c => { const dv = sh.getRange(2, m[c][0] + 1).getDataValidation();
+    if (dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) listas[c] = dv.getCriteriaValues()[0].map(x => String(x).trim()); });
+  return { sh, h, m, filas, cfg: { encabezados: CAMPOS.concat(extras), listas } };
 }
 function histTodo() {
   const sh = SpreadsheetApp.getActive().getSheetByName(HISTORIAL); if (!sh || sh.getLastRow() < 2) return [];
@@ -172,28 +204,66 @@ function anotar(u, hoja, id, cuenta, campo, antes, despues) {
   return { ts: now.getTime(), fecha: Utilities.formatDate(now, ZONA(), "yyyy-MM-dd'T'HH:mm:ss"), perfil: u.perfil, hoja, id, cuenta, campo, antes: antes == null ? '' : antes, despues: despues == null ? '' : despues };
 }
 function soloAdvisor(u) { if (u.rol !== 'advisor') throw new Error('Este perfil es de solo lectura.'); }
-function primeraLibre(sh, h) { const n = Math.max(sh.getLastRow() - 1, 0); const vals = n ? sh.getRange(2, 1, n, h.length).getValues() : []; let k = vals.length; for (let i = vals.length - 1; i >= 0; i--) { if (!vacia(vals[i], h)) break; k = i; } return k + 2; }
+/**
+ * Columna (base 1) donde se escribe un campo. Si la pestaña no la tiene y crear = true, la agrega al final
+ * con el nombre estándar (con casillas o lista desplegable si corresponde). libre = true permite crear
+ * columnas fuera del modelo (solo en traspasos, para no perder datos).
+ */
+function colDe(L, campo, crear, libre) {
+  if (L.m[campo]) return L.m[campo][0] + 1;
+  if (!crear) return 0;
+  if (!libre && CAMPOS.indexOf(campo) < 0) throw new Error('Campo no válido.');
+  const c = L.sh.getLastColumn() + 1; L.sh.getRange(1, c).setValue(campo);
+  try {
+    const rg = L.sh.getRange(2, c, Math.max(L.sh.getMaxRows() - 1, 1), 1);
+    if (BOOLS.indexOf(campo) >= 0) rg.insertCheckboxes();
+    else if (LISTAS_STD[campo]) rg.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(LISTAS_STD[campo], true).setAllowInvalid(true).build());
+  } catch (e) { /* el formato es opcional: el dato se guarda igual */ }
+  L.h[c - 1] = campo; L.m[campo] = [c - 1]; return c;
+}
+function primeraLibre(sh, m) { const n = Math.max(sh.getLastRow() - 1, 0); const vals = n ? sh.getRange(2, 1, n, Math.max(sh.getLastColumn(), 1)).getValues() : []; let k = vals.length; for (let i = vals.length - 1; i >= 0; i--) { if (!vacia(vals[i], m)) break; k = i; } return k + 2; }
 function cambiar(u, id, campo, valor) {
   soloAdvisor(u); const L = leer(u.hoja); const f = L.filas.find(x => x.id === String(id)); if (!f) throw new Error('Esta campaña no es tuya o ya no existe; recarga la página.');
-  const col = L.h.indexOf(campo); if (col < 0 || campo === IDC) throw new Error('Campo no válido.');
-  const antes = f.v[campo]; L.sh.getRange(f.fila, col + 1).setValue(convertir(campo, valor));
+  if (campo === 'Notas') throw new Error('Las notas se agregan desde la bitácora.');
+  if (!campo || campo === IDC || (CAMPOS.indexOf(campo) < 0 && !L.m[campo])) throw new Error('Campo no válido.');
+  const col = colDe(L, campo, true);
+  const antes = f.v[campo]; L.sh.getRange(f.fila, col).setValue(convertir(campo, valor));
   f.v[campo] = valor; const h = anotar(u, u.hoja, f.id, etiqueta(f.v), campo, antes, valor); SpreadsheetApp.flush();
   return { campana: f, hist: h };
 }
+/* Bitácora: cada nota se suma ARRIBA en la columna Notas principal, con fecha, hora y quién la escribió.
+ * Formato de cada línea: "[20/10/2026 14:30, Mafer] texto". Lo que ya estaba escrito se conserva debajo. */
+function nota(u, id, texto) {
+  soloAdvisor(u); texto = String(texto || '').replace(/\s*\n+\s*/g, ' / ').trim();
+  if (!texto) throw new Error('Escribe la nota primero.'); if (texto.length > 1000) throw new Error('La nota es muy larga; resúmela en menos de 1000 letras.');
+  const L = leer(u.hoja); const f = L.filas.find(x => x.id === String(id)); if (!f) throw new Error('Esta campaña no es tuya o ya no existe; recarga la página.');
+  const col = colDe(L, 'Notas', true), antes = String(L.sh.getRange(f.fila, col).getValue() || '').trim();
+  const linea = '[' + Utilities.formatDate(new Date(), ZONA(), 'dd/MM/yyyy HH:mm') + ', ' + u.perfil + '] ' + texto;
+  L.sh.getRange(f.fila, col).setValue(antes ? linea + '\n' + antes : linea);
+  const r = L.sh.getRange(f.fila, 1, 1, L.sh.getLastColumn()).getValues()[0]; f.v.Notas = valorDe(r, L.m.Notas);
+  const h = anotar(u, u.hoja, f.id, etiqueta(f.v), 'Nota', '', texto); SpreadsheetApp.flush();
+  return { campana: f, hist: h };
+}
+/** Escribe una campaña completa en una fila, respetando lo que ya haya en las demás columnas (casillas, formato). */
+function escribirFila(L, fila, id, v, libre) {
+  Object.keys(v).forEach(k => colDe(L, k, true, libre));
+  const ncol = L.sh.getLastColumn(), row = L.sh.getRange(fila, 1, 1, ncol).getValues()[0];
+  row[L.h.indexOf(IDC)] = id; Object.keys(v).forEach(k => { row[L.m[k][0]] = convertir(k, v[k]); });
+  L.sh.getRange(fila, 1, 1, ncol).setValues([row]);
+}
 function agregar(u, valores) {
-  soloAdvisor(u); const L = leer(u.hoja); const fila = primeraLibre(L.sh, L.h); const id = u.hoja.slice(0, 3).toLowerCase() + Utilities.getUuid().slice(0, 8);
-  const v = {}; Object.keys(valores).forEach(k => { if (valores[k] !== '' && valores[k] != null && L.h.indexOf(k) >= 0) v[k] = valores[k]; });
-  L.sh.getRange(fila, 1, 1, L.h.length).setValues([L.h.map(n => n === IDC ? id : (n in v ? convertir(n, v[n]) : ''))]);
+  soloAdvisor(u); const L = leer(u.hoja); const fila = primeraLibre(L.sh, L.m); const id = u.hoja.slice(0, 3).toLowerCase() + Utilities.getUuid().slice(0, 8);
+  const v = {}; Object.keys(valores).forEach(k => { if (lleno(valores[k]) && k !== 'Notas' && (CAMPOS.indexOf(k) >= 0 || L.m[k])) v[k] = valores[k]; });
+  escribirFila(L, fila, id, v);
   const h = anotar(u, u.hoja, id, etiqueta(v), 'Nueva campaña', '', etiqueta(v)); SpreadsheetApp.flush();
   return { campana: { id, hoja: u.hoja, fila, v }, hist: h };
 }
 function transferir(u, id, dest) {
   soloAdvisor(u); if (hojas().indexOf(dest) < 0 || dest === u.hoja) throw new Error('Elige a quién pasarla.');
   const O = leer(u.hoja); const f = O.filas.find(x => x.id === String(id)); if (!f) throw new Error('Esta campaña no es tuya.');
-  const D = leer(dest); const nz = t => String(t).trim().toLowerCase(); const alias = { 'link de asana': 'link asana', 'link asana': 'link de asana', 'notas': 'notas' };
-  const v = {}; Object.keys(f.v).forEach(k => { const t = D.h.find(h => h && nz(h) === nz(k)) || D.h.find(h => h && nz(h) === alias[nz(k)]); if (t) v[t] = f.v[k]; });
-  const fila = primeraLibre(D.sh, D.h);
-  D.sh.getRange(fila, 1, 1, D.h.length).setValues([D.h.map(n => n === IDC ? f.id : (n in v ? convertir(n, v[n]) : ''))]);
+  // Se pasa campo por campo con el modelo estándar; si a la otra pestaña le falta una columna, se crea para no perder nada.
+  const D = leer(dest), v = Object.assign({}, f.v), fila = primeraLibre(D.sh, D.m);
+  escribirFila(D, fila, f.id, v, true);
   O.sh.deleteRow(f.fila);
   const h = anotar(u, dest, f.id, etiqueta(v), 'Traspaso', u.hoja, dest); SpreadsheetApp.flush();
   return { campana: { id: f.id, hoja: dest, fila, v }, hist: h };

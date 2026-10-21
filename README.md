@@ -83,6 +83,24 @@ Desde el tablero, con el perfil de Andrea, en **Equipo**:
 
 Columnas de `_Usuarios`: `Perfil`, `Hoja`, `Rol` (`advisor`, `admin`, `presentacion`), `Llave`, `Link`. No edites `Llave` a mano.
 
+## Un solo modelo para todas
+
+Cada advisor arma su pestaña a su manera. El tablero las traduce a **un mismo modelo de campaña**, así todas ven los mismos campos en el mismo orden:
+
+- Los nombres de columna se reconocen sin importar mayúsculas, tildes o espacios (`notas` = `Notas`), y hay sinónimos (`link de asana` = `Link Asana`). La lista está en `CAMPOS` y `ALIAS` en `Code.gs`.
+- Si a una pestaña le falta un campo, la columna se crea al final la primera vez que alguien lo llena. Nunca se borra, mueve ni renombra una columna existente.
+- Si una pestaña tiene dos columnas para lo mismo (Cintia: `notas` y `Notas`), se leen las dos y se escribe en la que se llama exactamente igual.
+- Las listas desplegables son las mismas para todas (`LISTAS_STD`).
+- **Por ordenar:** el tablero marca lo que falta o está escrito distinto (sin status, sin puntaje, valores fuera de la lista, fechas escritas como texto) y, cuando puede, propone el arreglo con un clic (por ejemplo, "24/06 al 1/08" → fecha de activación y de finalización). Nadie cambia sus datos sin que ella lo apruebe.
+
+## Bitácora
+
+Cada campaña tiene una bitácora: cada nota se suma arriba con fecha, hora y quién la escribió, sin borrar las anteriores. Se guarda en la columna `Notas` de la hoja, una nota por línea con el formato `[20/10/2026 14:30, Mafer] texto`, así se sigue leyendo bien desde el Excel. Las notas que ya existían quedan como "Antes del tablero". En la lista se ve la última nota y hace cuánto se escribió (en dorado después de 3 días, en rojo después de 7).
+
+## Probar sin tocar datos reales
+
+Crea perfiles cuyo nombre empiece con `Prueba` desde **Equipo** y úsalos. Al terminar, en Apps Script ejecuta `borrarPruebas`: elimina esos perfiles, sus pestañas, las campañas que crearon (aunque las hayan pasado a otra advisor) y sus movimientos del historial.
+
 ## Cómo funciona
 
 - Todas se conectan a la misma hoja. El tablero se actualiza solo cada 45 segundos y al volver a la pestaña.
